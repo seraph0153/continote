@@ -1,5 +1,5 @@
 // 콘티노트 서비스워커: 앱을 오프라인에서도 열고, 이 기기에 저장한 악보 그림을 score/<해시> 주소로 내준다
-const VERSION = 'continote-v2';
+const VERSION = 'continote-v3';
 const RUNTIME = 'continote-runtime';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 
@@ -41,7 +41,8 @@ self.addEventListener('fetch', e => {
   }
   // 앱 화면: 새 버전을 먼저 받고, 인터넷이 없으면 저장해 둔 화면
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req)
+    // 브라우저가 기억해 둔 예전 화면 말고 늘 서버에 새 버전이 있는지 확인한다
+    e.respondWith(fetch(req.url, {cache: 'no-cache', credentials: 'same-origin'})
       .then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put('./index.html', copy)); return r; })
       .catch(() => caches.match('./index.html')));
     return;
