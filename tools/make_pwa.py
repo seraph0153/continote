@@ -159,6 +159,7 @@ function relinkState() {
 # ---------------------------------------------------------------- 기준곡: 곡이 없을 때 안내
 rep("""  if (!song) { fill(view, h('p', {class: 'hint', style: 'margin-bottom:10px', text: '모티브가 되는 메인곡을 먼저 고르세요. 이 곡의 키가 콘티 전체의 키가 돼요.'})); return; }""",
     """  if (!song && !SONGS.length) {
+    $('#basePick').hidden = true;
     fill(view, h('div', {class: 'onboard'},
       h('b', {text: '먼저 악보를 불러오세요'}),
       h('p', {class: 'hint', text: '가지고 있는 악보 그림 파일을 불러오면 파일 이름으로 곡 목록이 만들어져요. "시선 D.png"처럼 곡명 뒤에 키를 붙여 두면 키도 자동으로 들어가요. 악보는 이 기기 안에만 저장돼요.'}),
@@ -718,7 +719,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state};
 '''
-rep("""$('#trayGo').addEventListener('click',""", SETTINGS.strip('\n') + "\n$('#trayGo').addEventListener('click',")
+rep("// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시", SETTINGS.strip('\n') + "\n// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시")
 
 # ---------------------------------------------------------------- 남은 claude.ai 흔적이 없는지 확인
 for bad in [r'window\.claude', r'\bASSETS\b', r'(?<![A-Za-z])DB\.', r'\bSAMPLE\b', r'flushIndex', r'connectFolder', r'\bUPERR\b', r'renderDraft', r'aiBox\(', r'askDraft', r'__SONGS__', r'claude\.ai']:

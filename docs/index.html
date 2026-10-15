@@ -78,7 +78,7 @@ button{cursor:pointer}
 .datebox input{border:1px solid var(--line-strong);background:var(--surface);border-radius:8px;padding:5px 8px;font-size:14px;font-variant-numeric:tabular-nums}
 
 /* 배치 */
-.layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr);grid-template-areas:"base" "chords" "seq" "pick" "sheet"}
+.layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr);grid-template-areas:"base" "pick" "sheet" "chords" "seq"}
 .a-base{grid-area:base}.a-seq{grid-area:seq}.a-chords{grid-area:chords}.a-pick{grid-area:pick}.a-sheet{grid-area:sheet;min-width:0}
 @media (min-width:860px){
   .layout{grid-template-columns:minmax(0,1fr) minmax(330px,400px);grid-template-areas:"base sheet" "chords sheet" "seq sheet" "pick sheet";align-items:start}
@@ -239,12 +239,29 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .copybox{width:100%;margin-top:10px;font-family:var(--f-body);font-size:13px}
 
 /* 폰 하단 바 */
-.tray{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:10px;justify-content:space-between}
-.tray-dots{font-family:var(--f-display);font-size:18px;letter-spacing:2px;color:var(--line-strong);overflow:hidden;white-space:nowrap}
-.tray-dots b{color:var(--ink);font-weight:400}
-.tray-label{font-size:13px;color:var(--muted);white-space:nowrap}
+.tray{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.tray button{border:0;background:transparent;border-radius:10px;padding:8px 2px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.2}
+.tray button b{font-family:var(--f-mono);font-size:13px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
+.tray button[aria-current="true"]{background:var(--navy-soft);color:var(--ink);font-weight:600}
 @media (min-width:860px){.tray{display:none}}
 .scorebtn{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:859px){
+  .wrap{padding-block:8px 92px}
+  .top{align-items:center;gap:8px;padding-bottom:10px;margin-bottom:12px}
+  .brand{order:0;flex:1 1 auto;font-size:21px}
+  .brand small{display:none}
+  .top>.btn{order:1;padding:5px 10px;font-size:13.5px}
+  .top>.scorebtn{margin-left:0}
+  .svc{order:2;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin-inline:-16px;padding-inline:16px}
+  .svc::-webkit-scrollbar{display:none}
+  .svc button{flex:none;padding:5px 12px;font-size:13.5px;white-space:nowrap}
+  .datebox{order:3;flex:1 1 100%}
+  .datebox input{flex:1;min-width:0}
+  .panel{padding:14px}
+  .panel>h2 .n{display:none}  /* 폰에서는 칸 순서를 바꾸므로 번호를 숨긴다 */
+  .tabs{scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+}
 .row-title button,.slot-title button,.base-title button{all:unset;cursor:pointer;text-decoration:underline dotted var(--line-strong);text-underline-offset:4px;text-decoration-thickness:1px}
 .row-title button:hover,.slot-title button:hover,.base-title button:hover{text-decoration-color:var(--ink)}
 .slot-title button:focus-visible,.base-title button:focus-visible{outline:2px solid var(--navy);outline-offset:2px;border-radius:3px}
@@ -558,10 +575,12 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
   </main>
 </div>
 
-<div class="tray" id="tray">
-  <div><div class="tray-label" id="trayLabel"></div><div class="tray-dots" id="trayDots"></div></div>
-  <button class="btn primary" id="trayGo">콘티 보기</button>
-</div>
+<nav class="tray" id="tray" aria-label="화면 이동">
+  <button type="button" data-go="base"><b>♫</b>곡 고르기</button>
+  <button type="button" data-go="sheet"><b id="trayCount">0/4</b>콘티</button>
+  <button type="button" data-go="chordsPanel"><b>♪</b>화음</button>
+  <button type="button" data-go="seqPanel"><b>♩</b>마디</button>
+</nav>
 <div class="toast" id="toast" role="status"></div>
 
 <dialog class="dlg pv" id="pv" aria-labelledby="pvTitle">
@@ -998,6 +1017,7 @@ function renderBase() {
   const song = baseSong(), view = $('#baseView');
   $('#basePick').hidden = !!song && !state.changingBase;
   if (!song && !SONGS.length) {
+    $('#basePick').hidden = true;
     fill(view, h('div', {class: 'onboard'},
       h('b', {text: '먼저 악보를 불러오세요'}),
       h('p', {class: 'hint', text: '가지고 있는 악보 그림 파일을 불러오면 파일 이름으로 곡 목록이 만들어져요. "시선 D.png"처럼 곡명 뒤에 키를 붙여 두면 키도 자동으로 들어가요. 악보는 이 기기 안에만 저장돼요.'}),
@@ -2281,8 +2301,7 @@ function renderSheet() {
   fill($('#exampleNote'), ...(state.example ? [h('div', {class: 'example'},
     h('span', {text: '9월 13일 오후예배 콘티를 예시로 불러왔어요.'}),
     h('button', {class: 'btn sm', onclick: () => { state = fresh(); recLimit = {}; aiRank = null; commit(); toast('새 콘티를 시작해요'); }}, '새 콘티 시작'))] : []));
-  $('#trayLabel').textContent = `${headerText()} ${state.label} · ${filled}/${n}곡`;
-  fill($('#trayDots'), ...state.slots.map((x, i) => x ? h('b', {text: CIRC[i]}) : CIRC[i]));
+  $('#trayCount').textContent = `${filled}/${n}`;
 }
 function contiText() {
   const lines = [`${headerText()} ${state.label}`];
@@ -2314,7 +2333,7 @@ $('#bkMaj').addEventListener('click', () => { state.baseKeyMinor = false; save()
 $('#bkMin').addEventListener('click', () => { state.baseKeyMinor = true; save(); renderBaseResults(); });
 $('#allSearch').addEventListener('input', () => { renderAll(); $('#allResults').scrollTop = 0; });
 $('#date').addEventListener('change', e => { if (e.target.value) { state.date = e.target.value; commit(['sheet']); } });
-$('#label').addEventListener('input', e => { state.label = e.target.value; save(); $('#trayLabel').textContent = `${headerText()} ${state.label}`; });
+$('#label').addEventListener('input', e => { state.label = e.target.value; save(); });
 $('#med').addEventListener('input', e => { state.med = e.target.value; save(); });
 ['rec', 'all'].forEach(t => $('#tab-' + t).addEventListener('click', () => { state.tab = t; commit(['pick']); if (t === 'all') $('#allSearch').focus(); }));
 $('#modeMaj').addEventListener('click', () => { state.player.minor = false; commit(['chords']); });
@@ -2551,7 +2570,21 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
 }
 if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state};
-$('#trayGo').addEventListener('click', () => $('#sheet').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}));
+// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시
+document.querySelectorAll('#tray [data-go]').forEach(b => b.addEventListener('click', () => {
+  const el = document.getElementById(b.dataset.go);
+  if (el) el.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'});
+}));
+if ('IntersectionObserver' in window) {
+  const navOf = {base: 'base', pick: 'base', sheet: 'sheet', chordsPanel: 'chordsPanel', seqPanel: 'seqPanel'};
+  const io = new IntersectionObserver(es => {
+    const vis = es.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!vis) return;
+    const go = navOf[vis.target.id];
+    document.querySelectorAll('#tray [data-go]').forEach(b => b.setAttribute('aria-current', String(b.dataset.go === go)));
+  }, {rootMargin: '-35% 0px -55% 0px'});
+  Object.keys(navOf).forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
+}
 
 buildKeyboard();
 commit();
