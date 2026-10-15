@@ -375,6 +375,17 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .edit-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;margin-bottom:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .edit-form input{flex:1 1 200px;min-width:0}
 .edit-form select{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:6px;font-size:14px}
+.install-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 12px;padding:12px 14px;border-radius:12px;background:var(--navy);color:var(--navy-ink)}
+.install-bar b{font-size:15px}
+.install-bar .ib-text{flex:1 1 220px;font-size:13.5px;line-height:1.5}
+.install-bar ol{margin:4px 0 0;padding-left:20px}
+.install-bar .btn{background:var(--navy-ink);color:var(--navy);border-color:var(--navy-ink);font-weight:600}
+.install-bar .btn.ib-close{background:transparent;color:var(--navy-ink);border-color:currentColor;font-weight:400}
+.install-bar a.btn{text-decoration:none;display:inline-block}
+.share-ico{display:inline-block;width:1.15em;height:1.15em;vertical-align:-.2em;margin:0 2px}
+.share-box{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center}
+.share-box canvas{width:160px;height:160px;border-radius:8px;background:#ffffff;padding:8px}
+.share-url{font-family:var(--f-mono);font-size:13px;overflow-wrap:anywhere}
 .toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px);opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 @media (min-width:860px){.toast{bottom:24px}}
@@ -383,6 +394,7 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 </head>
 <body>
 <div class="wrap">
+  <div id="installBar"></div>
   <header class="top">
     <h1 class="brand">콘티노트<small>기준곡 하나로 시작하는 찬양 콘티</small></h1>
     <div class="svc" id="svc" role="group" aria-label="예배 선택"></div>
@@ -2430,9 +2442,14 @@ function renderSettings() {
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '앱으로 설치'})),
-    h('p', {class: 'hint', text: ios
-      ? '사파리 아래쪽 공유 버튼 → "홈 화면에 추가"를 누르면 앱처럼 쓸 수 있어요. 설치하면 인터넷이 없어도 열려요.'
-      : '크롬·엣지 주소창 오른쪽의 설치 아이콘이나 메뉴의 "앱 설치"(안드로이드는 "홈 화면에 추가")를 누르면 앱처럼 쓸 수 있어요. 설치하면 인터넷이 없어도 열려요.'}),
+    (() => { const x = installHelp(); if (!x) return h('p', {class: 'hint', text: ios ? '사파리 공유 버튼 → "홈 화면에 추가"를 누르면 앱처럼 쓸 수 있어요.' : '크롬·엣지 주소창 오른쪽의 설치 아이콘이나 메뉴의 "앱 설치"를 누르면 앱처럼 쓸 수 있어요. 폰에서는 아래 QR 코드를 찍어 여세요.'});
+      const box = h('div', {class: 'install-bar', style: 'margin:0'}); fill(box, ...helpNode(x, false)); return box; })(),
+    h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '함께 쓰기'}), h('span', {text: '폰으로 열기 · 다른 분께 알리기'})),
+    (() => { const cv = h('canvas', {width: 320, height: 320, 'aria-label': '콘티노트 주소 QR 코드'}); drawQR(cv);
+      return h('div', {class: 'share-box'}, cv, h('div', {style: 'display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 200px'},
+        h('p', {class: 'hint', text: '폰 카메라로 QR 코드를 찍으면 바로 열려요.'}),
+        h('div', {class: 'share-url', text: APP_URL}),
+        h('div', {class: 'row-btns'}, h('button', {class: 'btn primary', type: 'button', onclick: shareApp}, navigator.share ? '공유하기' : '주소 복사')))); })(),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '콘티노트'}), h('span', {text: '무료'})),
     h('p', {class: 'hint', text: '찬양 인도자를 위한 무료 콘티 도구예요. 악보와 자료는 서버로 보내지 않아요. 악보의 저작권은 각 저작권자에게 있으니 교회 안에서 바르게 사용해 주세요.'}));
 }
@@ -2460,10 +2477,75 @@ async function restoreBackup(file) {
 $('#setBtn').addEventListener('click', () => { const d = $('#setDlg'); if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); } renderSettings(); });
 $('#setDlg').addEventListener('click', e => { const d = $('#setDlg'); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
 $('#restoreIn').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) restoreBackup(f); });
+/* ---------- 설치 안내: 기기·브라우저마다 가장 쉬운 방법 ---------- */
+const APP_URL = 'https://seraph0153.github.io/continote/';
+const UA = navigator.userAgent;
+const DEV = {
+  ios: /iPhone|iPad|iPod/.test(UA) || (!/Android/.test(UA) && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+  android: /Android/.test(UA),
+  kakao: /KAKAOTALK/i.test(UA),
+  inApp: /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|BAND\//i.test(UA),
+  standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
+};
+DEV.iosSafari = DEV.ios && /Safari/.test(UA) && !/CriOS|FxiOS|EdgiOS/.test(UA) && !DEV.inApp;
+const SHARE_SVG = '<svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
 let installEvt = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
-window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; toast('콘티노트를 설치했어요'); });
-$('#installBtn').addEventListener('click', async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; $('#installBtn').hidden = true; });
+function installHelp() {
+  if (DEV.standalone) return {title: '설치되어 있어요', text: '홈 화면의 콘티노트 아이콘으로 열고 있어요.'};
+  if (DEV.kakao) return {title: '카카오톡 안에서는 설치가 안 돼요', text: '아래 버튼으로 기본 브라우저에서 연 뒤 설치하세요.',
+    link: {href: 'kakaotalk://web/openExternal?url=' + encodeURIComponent(APP_URL), label: '기본 브라우저로 열기'}};
+  if (DEV.inApp && DEV.android) return {title: '이 앱 안에서는 설치가 안 돼요', text: '아래 버튼으로 크롬에서 연 뒤 설치하세요.',
+    link: {href: 'intent://' + APP_URL.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end', label: '크롬으로 열기'}};
+  if (DEV.inApp) return {title: '이 앱 안에서는 설치가 안 돼요', text: '화면 구석의 ··· 메뉴에서 "Safari로 열기"(또는 "다른 브라우저로 열기")를 누른 뒤 설치하세요.'};
+  if (installEvt) return {title: '콘티노트를 앱으로 설치하세요', text: '홈 화면에 아이콘이 생기고, 인터넷이 없어도 열려요.', button: '홈 화면에 설치'};
+  if (DEV.iosSafari) return {title: '홈 화면에 설치하기', steps: [`아래쪽 공유 버튼 ${SHARE_SVG} 누르기`, '목록을 올려 "홈 화면에 추가" 누르기', '오른쪽 위 "추가" 누르기']};
+  if (DEV.ios) return {title: '홈 화면에 설치하기', steps: [`주소창 옆 공유 버튼 ${SHARE_SVG} 누르기`, '"홈 화면에 추가" 누르기 (안 보이면 Safari에서 여세요)']};
+  if (DEV.android) return {title: '홈 화면에 설치하기', steps: ['오른쪽 위 ⋮ 메뉴 누르기', '"홈 화면에 추가" 또는 "앱 설치" 누르기']};
+  return null;
+}
+function helpNode(x, inBar) {
+  const text = h('div', {class: 'ib-text'}, h('b', {text: x.title}));
+  if (x.text) text.append(h('div', {text: x.text}));
+  if (x.steps) { const ol = h('ol'); x.steps.forEach(st => { const li = document.createElement('li'); li.innerHTML = st; ol.append(li); }); text.append(ol); }
+  const acts = [];
+  if (x.link) acts.push(h('a', {class: 'btn', href: x.link.href}, x.link.label));
+  if (x.button) acts.push(h('button', {class: 'btn', type: 'button', onclick: doInstall}, x.button));
+  if (inBar) acts.push(h('button', {class: 'btn ib-close', type: 'button', onclick: () => { try { localStorage.setItem('continote.installHint', 'off'); } catch (e) {} renderInstallBar(); }}, '닫기'));
+  return [text, ...acts];
+}
+function renderInstallBar() {
+  const bar = $('#installBar');
+  let off = false; try { off = localStorage.getItem('continote.installHint') === 'off'; } catch (e) {}
+  const x = installHelp();
+  const mobile = DEV.ios || DEV.android;
+  if (!x || DEV.standalone || off || !(mobile || installEvt)) { bar.className = ''; fill(bar); return; }
+  bar.className = 'install-bar'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', '앱 설치 안내');
+  fill(bar, ...helpNode(x, true));
+}
+async function doInstall() {
+  if (!installEvt) return;
+  installEvt.prompt();
+  try { await installEvt.userChoice; } catch (e) {}
+  installEvt = null; $('#installBtn').hidden = true; renderInstallBar(); renderSettings();
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; renderInstallBar(); renderSettings(); });
+window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; installEvt = null; renderInstallBar(); toast('콘티노트를 설치했어요'); });
+$('#installBtn').addEventListener('click', doInstall);
+renderInstallBar();
+// 함께 쓰기: QR 코드와 공유
+let qrLib = null;
+async function drawQR(canvas) {
+  try {
+    if (!window.QRious) qrLib = qrLib || new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js'; sc.onload = ok; sc.onerror = no; document.head.append(sc); });
+    await qrLib;
+    new window.QRious({element: canvas, value: APP_URL, size: 320, level: 'M', background: '#ffffff', foreground: '#14182b'});
+  } catch (e) { canvas.replaceWith(h('p', {class: 'hint', text: 'QR 코드는 인터넷이 연결되어 있을 때 보여요.'})); }
+}
+async function shareApp() {
+  const data = {title: '콘티노트', text: '기준곡 하나로 시작하는 무료 찬양 콘티 앱', url: APP_URL};
+  try { if (navigator.share) { await navigator.share(data); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(APP_URL); toast('주소를 복사했어요'); } catch (e) { toast(APP_URL); }
+}
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
