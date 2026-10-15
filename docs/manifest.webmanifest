@@ -1,0 +1,16 @@
+{
+  "name": "콘티노트 - 찬양 콘티",
+  "short_name": "콘티노트",
+  "description": "기준곡 하나로 시작하는 찬양 콘티. 같은 키 후보곡, 화음 듣기, 마디 진행, A4 콘티 파일까지 무료로.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef0f5",
+  "theme_color": "#24368f",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
