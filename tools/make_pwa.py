@@ -551,6 +551,12 @@ async function savePptBg(file) {
   await dbPut('files', 'bg:ppt', {blob, type: blob.type, path: 'bg:ppt'});
   PPT_BG = await blobToDataUrl(blob);
 }
+// 진행 보관함: 이 기기(IndexedDB) docs 'progs'
+const PROG_SHARED = false;
+const progAll = async () => (await dbGet('docs', 'progs').catch(() => null)) || {};
+async function listProgs() { return Object.entries(await progAll()).map(([id, p]) => ({id, ...p})); }
+async function putProg(id, prog) { const a = await progAll(); a[id] = prog; await dbPut('docs', 'progs', a); }
+async function delProg(id) { const a = await progAll(); delete a[id]; await dbPut('docs', 'progs', a); }
 
 '''
 rep_between("/* ---------- PPT 저장소 (claude.ai판)", "/* ---------- 예배 PPT 만들기", PPT_STORE)
@@ -644,7 +650,7 @@ function renderSettings() {
       h('button', {class: 'btn sm', type: 'button', onclick: () => { const id = 's' + Date.now().toString(36); SVC[id] = {name: '새 예배', count: 4, dow: 0, label: '새 예배', skipEdge: false}; saveSvc(); renderTop(); renderSettings(); }}, '+ 예배 추가'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { SVC = JSON.parse(JSON.stringify(DEFAULT_SVC)); saveSvc(); if (!SVC[state.svc]) setService(firstSvc()); else commit(); renderSettings(); }}, '기본으로')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '백업'}), h('span', {text: '곡 목록 · 기록 · 설정'})),
-    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
+    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·진행 보관함·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
@@ -661,8 +667,8 @@ function renderSettings() {
     h('p', {class: 'hint', text: '찬양 인도자를 위한 무료 콘티 도구예요. 악보와 자료는 서버로 보내지 않아요. 악보의 저작권은 각 저작권자에게 있으니 교회 안에서 바르게 사용해 주세요.'}));
 }
 async function makeBackup() {
-  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {};
-  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, pptOpt: state.pptOpt};
+  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {}, progs = (await dbGet('docs', 'progs').catch(() => null)) || {};
+  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, progs, pptOpt: state.pptOpt};
   try { await saveFiles([{filename: `콘티노트 백업 ${ymd(new Date())}.json`, data: JSON.stringify(data)}]); toast('백업 파일을 만들었어요'); }
   catch (e) { if (!e || e.code !== 'declined') toast('백업 파일을 저장하지 못했어요'); }
 }
@@ -678,6 +684,7 @@ async function restoreBackup(file) {
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     if (data.services && typeof data.services === 'object' && Object.keys(data.services).length) { SVC = data.services; saveSvc(); if (!SVC[state.svc]) state.svc = firstSvc(); }
     if (data.seasonOv && typeof data.seasonOv === 'object') state.seasonOv = {...state.seasonOv, ...data.seasonOv};
+    if (data.progs && typeof data.progs === 'object') { const a = (await dbGet('docs', 'progs').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.progs)) if (v && typeof v === 'object' && !a[k]) a[k] = v; await dbPut('docs', 'progs', a); }
     if (data.lyrics && typeof data.lyrics === 'object') { const a = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.lyrics)) if (typeof v === 'string' && !a[k]) a[k] = v; await dbPut('docs', 'lyrics', a); LYR_ALL = a; }
     rebuildUsage(); relinkState(); commit(); renderHistBtn(); renderSettings(); renderScoreStatus();
     toast('백업을 불러왔어요. 악보 그림은 다시 불러와 주세요');

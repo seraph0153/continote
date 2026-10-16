@@ -394,6 +394,17 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .lyr-edit{display:flex;flex-direction:column;gap:8px}
 .lyr-edit textarea{min-height:170px}
 .bg-thumb{width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.seq-lib{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:10px}
+.mly{display:block;width:100%;margin-top:4px;border:0;border-bottom:1px dashed var(--line-strong);background:transparent;font-size:12.5px;padding:3px 2px;color:var(--ink);min-width:0}
+.mly::placeholder{color:var(--line-strong)}
+.mly:focus{outline:none;border-bottom-color:var(--navy)}
+.cell.hitflash{background:var(--crimson-soft);border-color:var(--crimson)}
+.sec-ly{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.sec-ly textarea{min-height:64px}
+.prog-list{list-style:none;margin:0;padding:0 10px}
+.prog-list>li{padding:10px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.prog-list>li:first-child{border-top:0}
+.prog-list b{font-family:var(--f-display);font-size:16px}
 .svc-list{display:flex;flex-direction:column;gap:8px}
 .svc-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:6px 8px;align-items:center}
 .svc-row select{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:6px;font-size:14px}
@@ -504,10 +515,16 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
         <label class="tapadd" for="seqClick"><input type="checkbox" id="seqClick"> 메트로놈</label>
         <label class="tapadd" for="seqLoop"><input type="checkbox" id="seqLoop"> 반복</label>
       </div>
+      <div class="seq-lib">
+        <button class="btn sm" id="progSave" type="button">진행 저장</button>
+        <button class="btn sm" id="progOpen" type="button">진행 보관함</button>
+        <button class="btn sm" id="chartOpen" type="button">코드 악보 만들기</button>
+        <span class="hint" id="progNow"></span>
+      </div>
       <div class="palette">
         <div class="seq-transport">
           <button class="btn primary" id="seqPlay" type="button">▶ 처음부터 재생</button>
-          <button class="btn rec" id="seqRec" type="button">● 숫자키로 녹음</button>
+          <button class="btn rec" id="seqRec" type="button" title="숫자키나 코드 버튼을 박자에 맞춰 누르면 칸에 들어가요">● 녹음</button>
           <button class="btn" id="seqStop" type="button">■ 멈춤</button>
           <span class="hint" id="seqPos" aria-live="polite"></span>
         </div>
@@ -518,7 +535,7 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
       <div class="keymap">
         <div class="km-head">
           <label class="tapadd" for="keysOn"><input type="checkbox" id="keysOn"> 컴퓨터 숫자키 1~0으로 연주</label>
-          <span class="hint">Shift+숫자는 7화음 · Esc는 소리 멈춤 · 칸에 코드를 끌어 놓으면 그 숫자에 배정돼요</span>
+          <span class="hint">Shift+숫자는 7화음 · Esc는 소리 멈춤 · 칸에 코드를 끌어 놓으면 그 숫자에 배정돼요 · 녹음 중에는 숫자키·숫자 칸·코드 버튼 모두 박자 칸에 들어가요</span>
           <button class="btn sm" id="kmReset" type="button">기본 배정으로</button>
         </div>
         <div class="km-row" id="kmRow"></div>
@@ -610,6 +627,14 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 <dialog class="dlg" id="hist" aria-labelledby="histTitle">
   <div class="dlg-head"><h3 id="histTitle">콘티 기록</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
   <div class="dlg-body" id="histBody"></div>
+</dialog>
+<dialog class="dlg" id="progDlg" aria-labelledby="progTitle">
+  <div class="dlg-head"><h3 id="progTitle">진행 보관함</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
+  <div class="dlg-body" id="progBody"></div>
+</dialog>
+<dialog class="dlg" id="chartDlg" aria-labelledby="chartTitle">
+  <div class="dlg-head"><h3 id="chartTitle">코드 악보</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
+  <div class="dlg-body" id="chartBody"></div>
 </dialog>
 <dialog class="dlg" id="pptDlg" aria-labelledby="pptTitle">
   <div class="dlg-head"><h3 id="pptTitle">예배 PPT</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
@@ -1680,7 +1705,7 @@ const QUALS = [['', '메이저'], ['m', '마이너 m'], ['7', '7'], ['maj7', 'ma
 const DEG_OUT = {maj: {1: '♭2', 3: '♭3', 6: '♯4', 8: '♭6', 10: '♭7'}, min: {1: '♭2', 4: '♯3', 6: '♯4', 9: '♯6', 11: '♯7'}};
 function freshSeq() {
   const at = (r, q) => ({r, q, b: null});
-  return {meter: '4/4', bpm: 72, rhythm: 'change', click: false, loop: false, ptab: 'tri', custom: [], keymap: {}, keysOn: true,
+  return {meter: '4/4', bpm: 72, rhythm: 'change', click: false, loop: false, ptab: 'tri', custom: [], keymap: {}, keysOn: true, progId: '', progName: '',
     sections: [{name: '1절', bars: [[at(0, ''), null, null, null], [at(7, ''), null, null, null], [at(9, 'm'), null, null, null], [at(5, ''), null, null, null]]}]};
 }
 const relOf = (c, pk) => ({r: mod(c.root - pk.pc), q: c.q, b: c.bass == null ? null : mod(c.bass - pk.pc)});
@@ -1688,7 +1713,7 @@ const chordOf = (rel, pk) => ({root: mod(pk.pc + rel.r), q: rel.q, bass: rel.b =
 const degLabel = (r, minor) => { const mode = minor ? 'min' : 'maj', i = STEPS[mode].indexOf(r); return i >= 0 ? String(i + 1) : DEG_OUT[mode][r]; };
 const isOut = (rel, minor) => { const st = STEPS[minor ? 'min' : 'maj']; return Q[rel.q].some(i => !st.includes(mod(rel.r + i))) || (rel.b != null && !st.includes(rel.b)); };
 const sameRel = (a, b) => !!(a && b && a !== 'erase' && b !== 'erase' && a.r === b.r && a.q === b.q && a.b === b.b);
-let ARMED = null, DRAG = null, suppressClick = false, SEQP = null;
+let ARMED = null, DRAG = null, suppressClick = false, SEQP = null, LYSEC = -1;
 
 function bindDrag(el, getPayload, from, onTap) {
   el.addEventListener('pointerdown', e => {
@@ -1778,7 +1803,7 @@ function renderPalette() {
     const c = chordOf(rel, pk);
     const el = h('button', {type: 'button', class: 'pchord' + (isOut(rel, pk.minor) ? ' out' : '') + (sameRel(ARMED, rel) ? ' armed' : ''), 'aria-label': chordName(c, fl) + ' 코드', 'aria-pressed': String(sameRel(ARMED, rel))},
       h('b', {text: chordName(c, fl)}), h('span', {text: degLabel(rel.r, pk.minor)}));
-    bindDrag(el, () => rel, null, () => { playChord(c); ARMED = sameRel(ARMED, rel) ? null : {...rel}; renderPalette(); });
+    bindDrag(el, () => rel, null, () => { if (SEQP && SEQP.rec) { playLive(rel); recordRel(rel); return; } playChord(c); ARMED = sameRel(ARMED, rel) ? null : {...rel}; renderPalette(); });
     return el;
   };
   const eraser = h('button', {type: 'button', class: 'pchord eraser' + (ARMED === 'erase' ? ' armed' : ''), 'aria-pressed': String(ARMED === 'erase')}, h('b', {text: '지우개'}), h('span', {text: '칸 비우기'}));
@@ -1814,9 +1839,20 @@ function renderSections() {
       h('button', {class: 'btn sm', type: 'button', disabled: sec.bars.length <= 1, onclick: () => { sec.bars.pop(); commit(['seq']); }}, '마디 −'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => seqStart(si)}, '▶ 이 구간만'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { S.sections.splice(si + 1, 0, JSON.parse(JSON.stringify(sec))); commit(['seq']); }}, '복사'),
+      h('button', {class: 'btn sm', type: 'button', onclick: () => { LYSEC = LYSEC === si ? -1 : si; renderSections(); }}, LYSEC === si ? '가사 닫기' : '가사 한꺼번에'),
       h('button', {class: 'icon', type: 'button', 'aria-label': '구간 위로', disabled: si === 0, onclick: () => swap(si, si - 1)}, '▲'),
       h('button', {class: 'icon', type: 'button', 'aria-label': '구간 아래로', disabled: si === S.sections.length - 1, onclick: () => swap(si, si + 1)}, '▼'),
       h('button', {class: 'icon', type: 'button', 'aria-label': '구간 지우기', disabled: S.sections.length <= 1, onclick: () => { S.sections.splice(si, 1); commit(['seq']); }}, '✕')),
+    LYSEC === si ? h('div', {class: 'sec-ly'},
+      h('textarea', {class: 'field', id: 'secLyText', placeholder: '마디마다 / 로 나눠 적으세요. 예: 주의 사랑이 / 나를 덮으시니 / 나 이제 / 두려움 없네', 'aria-label': sec.name + ' 가사 한꺼번에'}, (sec.ly || []).slice(0, sec.bars.length).join(' / ')),
+      h('div', {class: 'row-btns'},
+        h('button', {class: 'btn sm primary', type: 'button', onclick: () => {
+          const parts = $('#secLyText').value.split('/').map(t => t.trim());
+          while (parts.length && !parts[parts.length - 1]) parts.pop();
+          while (sec.bars.length < parts.length) sec.bars.push(Array(n).fill(null));
+          sec.ly = parts; LYSEC = -1; commit(['seq']); toast(`${parts.length}마디에 가사를 넣었어요`);
+        }}, '마디에 나눠 넣기'),
+        h('span', {class: 'hint', text: '마디가 모자라면 늘어나요'}))) : null,
     h('div', {class: 'mbars'}, sec.bars.map((bar, bi) => {
       barNo++;
       const no = barNo;
@@ -1830,7 +1866,9 @@ function renderSections() {
             h('b', {text: chordName(c, fl)}), h('span', {text: degLabel(cell.r, pk.minor)}));
           bindDrag(el, () => cell, key, () => tapCell(key));
           return el;
-        })));
+        })),
+        h('input', {class: 'mly', value: (sec.ly && sec.ly[bi]) || '', placeholder: '가사', 'aria-label': `${no}마디 가사`, autocomplete: 'off',
+          oninput: e => { (sec.ly || (sec.ly = []))[bi] = e.target.value; save(); }}));
     })))));
 }
 
@@ -1938,20 +1976,32 @@ function playLive(rel) {
   const c = chordOf(rel, playerKey()), arp = state.arp;
   state.arp = false; playChord(c, true); state.arp = arp;
 }
+let missToast = 0;
+// 녹음 중 누른 코드를 가장 가까운 박 칸에 넣는다(반 박 넘게 어긋나면 넣지 않고 알려 줌)
+function recordRel(rel) {
+  const P = SEQP;
+  if (!P || !P.rec) return false;
+  const now = AC.currentTime;
+  let best = null;
+  // 아직 예약 전인 다음 박도 후보에 넣어 살짝 먼저 누른 것도 받는다
+  const nb = P.beats[P.i >= P.beats.length ? P.recStart : P.i];
+  const cands = nb && nb.key ? P.sched.concat([{t: P.next, key: nb.key}]) : P.sched;
+  for (const x of cands) if (!best || Math.abs(x.t - now) < Math.abs(best.t - now)) best = x;
+  if (best && Math.abs(best.t - now) <= P.spb * 0.6) {
+    const {bar, ki} = cellRef(best.key);
+    bar[ki] = {...rel}; P.hits = (P.hits || 0) + 1;
+    commit(['seq']);
+    const el = document.querySelector(`[data-cell="${best.key}"]`);
+    if (el) { el.classList.add('hitflash'); setTimeout(() => el.classList.remove('hitflash'), 350); }
+    return true;
+  }
+  if (Date.now() - missToast > 1500) { missToast = Date.now(); toast(P.sched.length ? '박자에 맞춰 눌러 주세요' : '준비 박자가 끝나면 눌러 주세요'); }
+  return false;
+}
 function hitKey(d, shift) {
   const rel = keyRel(d, shift); if (!rel) return;
   playLive(rel);
-  const P = SEQP;
-  if (P && P.rec) {
-    // 가장 가까운 박에 넣는다(반 박 이상 어긋나면 넣지 않음)
-    const now = AC.currentTime;
-    let best = null;
-    // 아직 예약 전인 다음 박도 후보에 넣어 살짝 먼저 누른 것도 받는다
-    const nb = P.beats[P.i >= P.beats.length ? P.recStart : P.i];
-    const cands = nb && nb.key ? P.sched.concat([{t: P.next, key: nb.key}]) : P.sched;
-    for (const x of cands) if (!best || Math.abs(x.t - now) < Math.abs(best.t - now)) best = x;
-    if (best && Math.abs(best.t - now) <= P.spb * 0.6) { const {bar, ki} = cellRef(best.key); bar[ki] = {...rel}; P.hits = (P.hits || 0) + 1; commit(['seq']); }
-  }
+  recordRel(rel);
   const el = document.querySelector(`.km[data-cell="km:${d}"]`);
   if (el) { el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 180); }
 }
@@ -1963,6 +2013,7 @@ function renderKeymap() {
     const el = h('button', {type: 'button', class: 'km' + (km[d] ? ' mine' : ''), 'data-cell': 'km:' + d, 'aria-label': `숫자 ${d}: ${rel ? chordName(chordOf(rel, pk), fl) : '없음'}`},
       h('i', {text: d}), h('b', {text: rel ? chordName(chordOf(rel, pk), fl) : '—'}), h('span', {text: km[d] ? '직접 배정' : (rel ? degLabel(rel.r, pk.minor) : '')}));
     el.addEventListener('click', () => {
+      if (SEQP && SEQP.rec) { hitKey(d, false); return; }
       if (ARMED === 'erase') { delete km[d]; state.seq.keymap = km; commit(['seq']); return; }
       if (ARMED) { km[d] = {...ARMED}; state.seq.keymap = km; commit(['seq']); toast(`숫자 ${d}에 배정했어요`); return; }
       hitKey(d, false);
@@ -2127,6 +2178,12 @@ async function savePptBg(file) {
   await dbPut('files', 'bg:ppt', {blob, type: blob.type, path: 'bg:ppt'});
   PPT_BG = await blobToDataUrl(blob);
 }
+// 진행 보관함: 이 기기(IndexedDB) docs 'progs'
+const PROG_SHARED = false;
+const progAll = async () => (await dbGet('docs', 'progs').catch(() => null)) || {};
+async function listProgs() { return Object.entries(await progAll()).map(([id, p]) => ({id, ...p})); }
+async function putProg(id, prog) { const a = await progAll(); a[id] = prog; await dbPut('docs', 'progs', a); }
+async function delProg(id) { const a = await progAll(); delete a[id]; await dbPut('docs', 'progs', a); }
 
 /* ---------- 예배 PPT 만들기: 곡별 PPT · 가사 · 악보 그림을 콘티 순서대로 한 파일로 ---------- */
 // ---------- PPTX 합치기: 다른 PPT의 슬라이드를 (그 배경·레이아웃·마스터·테마·그림과 함께) 뒤에 붙인다 ----------
@@ -2499,6 +2556,195 @@ function renderPpt() {
 }
 const canFolderPick = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+/* ---------- 진행 보관함: 마디 진행을 이름 붙여 저장·불러오기 ---------- */
+let PROGS = [], PGV = {confirm: null, msg: '', prev: null};
+const progSnapshot = name => {
+  const b = baseSong();
+  return {name, key: keyName(playerKey()), meter: state.seq.meter, bpm: state.seq.bpm, rhythm: state.seq.rhythm,
+    sections: JSON.parse(JSON.stringify(state.seq.sections)), custom: JSON.parse(JSON.stringify(state.seq.custom || [])),
+    songT: b ? b.t : '', songN: b ? b.n : '', savedAt: new Date().toISOString()};
+};
+function defaultProgName() { const b = baseSong(); return (state.seq.progName || (b ? b.t : '내 진행')) + ''; }
+async function saveProg(asNew) {
+  const name = (($('#progName') && $('#progName').value) || defaultProgName()).trim() || '내 진행';
+  const id = !asNew && state.seq.progId ? state.seq.progId : 'p' + Date.now().toString(36);
+  try {
+    await putProg(id, progSnapshot(name));
+    state.seq.progId = id; state.seq.progName = name; save();
+    PGV.msg = `"${name}"을 보관함에 저장했어요.`; toast('진행을 저장했어요');
+    PROGS = await listProgs();
+  } catch (e) { PGV.msg = '저장하지 못했어요. ' + (e && e.message ? e.message : '다시 눌러 주세요'); }
+  renderProgNow(); renderProgs();
+}
+function loadProg(p) {
+  PGV.prev = {seq: JSON.parse(JSON.stringify(state.seq)), player: {...state.player}};
+  const pk = parseKey(p.key);
+  if (pk) state.player = {pc: pk.pc, minor: pk.minor};
+  state.seq = {...state.seq, meter: p.meter in METERS ? p.meter : '4/4', bpm: Number(p.bpm) || 72, rhythm: p.rhythm || 'change',
+    sections: JSON.parse(JSON.stringify(p.sections || [])), custom: JSON.parse(JSON.stringify(p.custom || [])), progId: p.id, progName: p.name};
+  if (!state.seq.sections.length) state.seq.sections = freshSeq().sections;
+  commit(['chords']); renderProgNow();
+  PGV.msg = `"${p.name}"을 불러왔어요. ▶ 처음부터 재생으로 들어 보세요.`;
+  renderProgs();
+}
+function renderProgNow() {
+  const el = $('#progNow'); if (!el) return;
+  el.textContent = state.seq.progName ? `지금: ${state.seq.progName}` : '';
+}
+async function openProgs() {
+  const d = $('#progDlg');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  PGV.msg = ''; PGV.confirm = null; renderProgs();
+  PROGS = await listProgs(); renderProgs();
+}
+function renderProgs() {
+  if (!$('#progDlg').open) return;
+  const b = baseSong(), list = PROGS.slice().sort((x, y) => String(y.savedAt).localeCompare(String(x.savedAt)));
+  const bars = p => (p.sections || []).reduce((a, sc) => a + (sc.bars || []).length, 0);
+  fill($('#progBody'),
+    h('div', {class: 'row-btns'},
+      h('input', {class: 'field', id: 'progName', value: defaultProgName(), 'aria-label': '진행 이름', style: 'flex:1 1 200px;min-width:0'}),
+      h('button', {class: 'btn primary', type: 'button', onclick: () => saveProg(false)}, state.seq.progId ? '고친 내용 저장' : '지금 진행 저장'),
+      state.seq.progId ? h('button', {class: 'btn', type: 'button', onclick: () => saveProg(true)}, '새 이름으로 저장') : null),
+    h('p', {class: 'hint', text: '지금 마디 진행(키·박자·빠르기·구간·마디 가사)을 그대로 저장해요.' + (PROG_SHARED ? ' 폰과 맥에서 함께 보여요.' : ' 이 기기에 저장돼요.')}),
+    PGV.msg ? h('p', {class: 'hint', role: 'status', text: PGV.msg}) : null,
+    PGV.prev ? h('div', {class: 'row-btns'}, h('button', {class: 'btn sm', type: 'button', onclick: () => { state.seq = PGV.prev.seq; state.player = PGV.prev.player; PGV.prev = null; PGV.msg = '불러오기 전으로 되돌렸어요.'; commit(['chords']); renderProgNow(); renderProgs(); }}, '불러오기 전으로 되돌리기')) : null,
+    h('div', {class: 'group-h'}, h('span', {text: '저장한 진행'}), h('span', {text: `${list.length}개`})),
+    list.length ? h('ul', {class: 'prog-list listbox'}, list.map(p => {
+      const d = p.savedAt ? new Date(p.savedAt) : null;
+      return h('li', {},
+        h('div', {class: 'hist-head'}, h('b', {text: p.name}), h('span', {class: 'k', text: p.key || ''}),
+          h('span', {class: 'hint', text: `${p.meter} · ♩${p.bpm} · ${bars(p)}마디${p.songT ? ' · ' + p.songT : ''}${d ? ` · ${d.getMonth() + 1}월 ${d.getDate()}일` : ''}`})),
+        PGV.confirm === p.id
+          ? h('div', {class: 'confirm', role: 'alert'}, h('span', {text: '이 진행을 지울까요? 되돌릴 수 없어요.'}),
+              h('button', {class: 'btn sm danger', type: 'button', onclick: async () => { try { await delProg(p.id); PROGS = PROGS.filter(x => x.id !== p.id); if (state.seq.progId === p.id) { state.seq.progId = ''; state.seq.progName = ''; save(); renderProgNow(); } toast('진행을 지웠어요'); } catch (e) { toast('지우지 못했어요'); } PGV.confirm = null; renderProgs(); }}, '지우기'),
+              h('button', {class: 'btn sm', type: 'button', onclick: () => { PGV.confirm = null; renderProgs(); }}, '취소'))
+          : h('div', {class: 'row-btns'},
+              h('button', {class: 'btn sm primary', type: 'button', onclick: () => loadProg(p)}, '불러오기'),
+              h('button', {class: 'btn sm', type: 'button', onclick: () => { loadProg(p); $('#progDlg').close(); seqStart(null); }}, '▶ 바로 듣기'),
+              h('button', {class: 'btn sm', type: 'button', onclick: () => { $('#progDlg').close(); openChart(p); }}, '코드 악보'),
+              h('button', {class: 'btn sm danger', type: 'button', onclick: () => { PGV.confirm = p.id; renderProgs(); }}, '지우기')));
+    })) : h('p', {class: 'hint', text: '아직 저장한 진행이 없어요. 마디 진행을 만들거나 녹음한 뒤 위에서 저장하세요.'}));
+}
+
+/* ---------- 코드 악보: 구간·마디별 코드와 가사를 A4 세로 악보로 ---------- */
+const CHART = {w: 1240, h: 1754, m: 72};
+let CH = null;
+function chartPages(p) {
+  const pk = parseKey(p.key) || playerKey(), fl = flatsFor(pk), meter = p.meter in METERS ? p.meter : '4/4', n = METERS[meter].n;
+  const {w: W, h: H, m} = CHART, perRow = 4, barW = (W - 2 * m) / perRow;
+  const lyOn = (p.sections || []).some(sc => (sc.ly || []).some(t => String(t || '').trim()));
+  const rowH = lyOn ? 128 : 92, FONT_B = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif', FONT_C = '"IBM Plex Mono", "SF Mono", Menlo, monospace';
+  const pages = [];
+  let g = null, y = 0;
+  const fitText = (text, maxW, size, min, weight, family) => {
+    let sz = size;
+    g.font = `${weight} ${sz}px ${family}`;
+    while (g.measureText(text).width > maxW && sz > min) { sz -= 1; g.font = `${weight} ${sz}px ${family}`; }
+    let t = text;
+    while (g.measureText(t).width > maxW && t.length > 1) t = t.slice(0, -2) + '…';
+    return t;
+  };
+  const newPage = () => {
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    pages.push(cv); y = m;
+    g.fillStyle = '#14182b'; g.textBaseline = 'alphabetic';
+    if (pages.length === 1) {
+      g.font = `700 50px ${FONT_B}`; g.textAlign = 'left';
+      g.fillText(fitText(p.name || '코드 악보', W - 2 * m - 360, 50, 30, 700, FONT_B), m, y + 46);
+      g.font = `500 26px ${FONT_B}`; g.textAlign = 'right'; g.fillStyle = '#5b6176';
+      g.fillText(`Key ${keyName(pk)} · ${meter} · ♩${meter.endsWith('/8') ? '.' : ''}=${p.bpm || 72}`, W - m, y + 44);
+      g.fillStyle = '#14182b'; g.fillRect(m, y + 66, W - 2 * m, 3);
+      y += 110;
+    } else {
+      g.font = `500 22px ${FONT_B}`; g.textAlign = 'left'; g.fillStyle = '#5b6176';
+      g.fillText(`${p.name || '코드 악보'} (${pages.length})`, m, y + 22);
+      y += 52;
+    }
+    g.textAlign = 'left';
+  };
+  newPage();
+  for (const sc of p.sections || []) {
+    const bars = sc.bars || [], rows = Math.max(1, Math.ceil(bars.length / perRow));
+    if (y + 52 + rowH > H - m) newPage();
+    g.font = `600 26px ${FONT_B}`; g.fillStyle = '#24368f';
+    const lw = g.measureText(sc.name || '').width + 28;
+    g.strokeStyle = '#24368f'; g.lineWidth = 2; g.strokeRect(m, y, lw, 38);
+    g.fillText(sc.name || '', m + 14, y + 28);
+    y += 52;
+    let prev = null;
+    for (let r = 0; r < rows; r++) {
+      if (y + rowH > H - m) newPage();
+      const rowBars = bars.slice(r * perRow, r * perRow + perRow);
+      rowBars.forEach((bar, c) => {
+        const x = m + c * barW, bi = r * perRow + c;
+        g.fillStyle = '#14182b'; g.fillRect(x, y + 6, 2, rowH - 26);
+        const slotW = (barW - 20) / n;
+        let any = false;
+        (bar || []).forEach((cell, ki) => {
+          if (!cell) return;
+          any = true; prev = cell;
+          const name = chordName(chordOf(cell, pk), fl);
+          g.fillStyle = '#a1232d';
+          const t = fitText(name, (ki === n - 1 || !(bar[ki + 1]) ? slotW * (n - ki) : slotW) - 6, 32, 16, 600, FONT_C);
+          g.fillText(t, x + 14 + ki * slotW, y + 44);
+        });
+        if (!any && prev) { g.fillStyle = '#9ca2bc'; g.font = `500 30px ${FONT_C}`; g.fillText('%', x + barW / 2 - 10, y + 44); }
+        const ly = String((sc.ly || [])[bi] || '').trim();
+        if (lyOn && ly) { g.fillStyle = '#14182b'; g.fillText(fitText(ly, barW - 24, 26, 15, 400, FONT_B), x + 14, y + 92); }
+      });
+      const endX = m + rowBars.length * barW;
+      g.fillStyle = '#14182b'; g.fillRect(endX - 2, y + 6, 2, rowH - 26);
+      if (r === rows - 1) g.fillRect(endX - 8, y + 6, 2, rowH - 26);  // 구간 끝 겹세로줄
+      y += rowH;
+    }
+    y += 16;
+  }
+  pages.forEach((cv, i) => {
+    const gg = cv.getContext('2d');
+    gg.font = `400 18px ${FONT_B}`; gg.fillStyle = '#9ca2bc'; gg.textAlign = 'right';
+    gg.fillText(pages.length > 1 ? `${i + 1} / ${pages.length}` : '', W - m, H - 36);
+  });
+  return pages;
+}
+async function openChart(p) {
+  const src = p || progSnapshot(defaultProgName());
+  try { await document.fonts.load(`600 30px "IBM Plex Mono"`); await document.fonts.load(`500 26px "IBM Plex Sans KR"`); } catch (e) {}
+  if (CH) CH.urls.forEach(u => URL.revokeObjectURL(u));
+  const pages = chartPages(src);
+  const blobs = await Promise.all(pages.map(cv => new Promise(r => cv.toBlob(r, 'image/png'))));
+  CH = {p: src, pages, blobs, urls: blobs.map(b => URL.createObjectURL(b)), msg: ''};
+  const d = $('#chartDlg');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  renderChart();
+}
+function renderChart() {
+  if (!CH || !$('#chartDlg').open) return;
+  const base = (CH.p.name || '코드 악보').replace(/[\\/:*?"<>|]/g, ' ').trim();
+  fill($('#chartBody'),
+    h('p', {class: 'hint', text: `${CH.p.name} · Key ${CH.p.key} · ${CH.p.meter} · A4 세로 ${CH.pages.length}장 · 마디 아래 가사 칸에 적은 가사가 함께 들어가요`}),
+    h('div', {class: 'row-btns'},
+      h('button', {class: 'btn primary', type: 'button', onclick: async () => {
+        const dl = await getDownloads(); if (!dl) { CH.msg = dlMsg(null); renderChart(); return; }
+        try {
+          if (!window.jspdf) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+          const doc = new window.jspdf.jsPDF({orientation: 'portrait', unit: 'mm', format: 'a4', compress: true});
+          CH.pages.forEach((cv, i) => { if (i) doc.addPage('a4', 'portrait'); doc.addImage(cv.toDataURL('image/png'), 'PNG', 0, 0, 210, 297); });
+          await dl.save({filename: `${base} 코드 악보.pdf`, data: doc.output('blob')}); CH.msg = 'PDF를 저장했어요.';
+        } catch (e) { CH.msg = e && e.code ? dlMsg(e) : 'PDF를 만들지 못했어요.'; }
+        renderChart();
+      }}, 'PDF로 저장'),
+      h('button', {class: 'btn', type: 'button', onclick: async () => {
+        const dl = await getDownloads(); if (!dl) { CH.msg = dlMsg(null); renderChart(); return; }
+        try { for (let i = 0; i < CH.blobs.length; i++) await dl.save({filename: `${base} 코드 악보${CH.blobs.length > 1 ? ' ' + (i + 1) : ''}.png`, data: CH.blobs[i]}); CH.msg = '이미지를 저장했어요.'; }
+        catch (e) { CH.msg = dlMsg(e); }
+        renderChart();
+      }}, '이미지로 저장')),
+    CH.msg ? h('p', {class: 'hint', role: 'status', text: CH.msg}) : null,
+    h('div', {class: 'ex-pages'}, CH.urls.map((u, i) => h('figure', {}, h('img', {src: u, alt: `코드 악보 ${i + 1}쪽`})))));
+}
+
 /* ---------- 콘티 파일: A4 가로에 2곡씩, 첫 장 왼쪽 위에 날짜·예배 ---------- */
 const PAGE = {w: 2000, h: 1414, m: 56, gap: 48, top: 70};
 const CANVAS_FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
@@ -2809,6 +3055,11 @@ for (const d of [$('#pv'), $('#sm')]) {
   d.addEventListener('close', () => { if (d.id === 'pv' && PV) { Object.keys(PV.rotUrl).forEach(clearRot); PV = null; revokePv(); } });
 }
 $('#pptBtn').addEventListener('click', openPpt);
+$('#progSave').addEventListener('click', () => { openProgs(); });
+$('#progOpen').addEventListener('click', openProgs);
+$('#chartOpen').addEventListener('click', () => openChart());
+for (const id of ['progDlg', 'chartDlg']) $('#' + id).addEventListener('click', e => { const d = $('#' + id); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+renderProgNow();
 $('#pptDlg').addEventListener('click', e => { const d = $('#pptDlg'); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
 $('#pptFilesIn').addEventListener('change', e => { const files = [...(e.target.files || [])]; e.target.value = ''; importSongPpts(files); });
 $('#pptFolderIn').addEventListener('change', e => { const files = [...(e.target.files || [])]; e.target.value = ''; importSongPpts(files); });
@@ -2895,7 +3146,7 @@ function renderSettings() {
       h('button', {class: 'btn sm', type: 'button', onclick: () => { const id = 's' + Date.now().toString(36); SVC[id] = {name: '새 예배', count: 4, dow: 0, label: '새 예배', skipEdge: false}; saveSvc(); renderTop(); renderSettings(); }}, '+ 예배 추가'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { SVC = JSON.parse(JSON.stringify(DEFAULT_SVC)); saveSvc(); if (!SVC[state.svc]) setService(firstSvc()); else commit(); renderSettings(); }}, '기본으로')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '백업'}), h('span', {text: '곡 목록 · 기록 · 설정'})),
-    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
+    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·진행 보관함·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
@@ -2912,8 +3163,8 @@ function renderSettings() {
     h('p', {class: 'hint', text: '찬양 인도자를 위한 무료 콘티 도구예요. 악보와 자료는 서버로 보내지 않아요. 악보의 저작권은 각 저작권자에게 있으니 교회 안에서 바르게 사용해 주세요.'}));
 }
 async function makeBackup() {
-  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {};
-  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, pptOpt: state.pptOpt};
+  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {}, progs = (await dbGet('docs', 'progs').catch(() => null)) || {};
+  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, progs, pptOpt: state.pptOpt};
   try { await saveFiles([{filename: `콘티노트 백업 ${ymd(new Date())}.json`, data: JSON.stringify(data)}]); toast('백업 파일을 만들었어요'); }
   catch (e) { if (!e || e.code !== 'declined') toast('백업 파일을 저장하지 못했어요'); }
 }
@@ -2929,6 +3180,7 @@ async function restoreBackup(file) {
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     if (data.services && typeof data.services === 'object' && Object.keys(data.services).length) { SVC = data.services; saveSvc(); if (!SVC[state.svc]) state.svc = firstSvc(); }
     if (data.seasonOv && typeof data.seasonOv === 'object') state.seasonOv = {...state.seasonOv, ...data.seasonOv};
+    if (data.progs && typeof data.progs === 'object') { const a = (await dbGet('docs', 'progs').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.progs)) if (v && typeof v === 'object' && !a[k]) a[k] = v; await dbPut('docs', 'progs', a); }
     if (data.lyrics && typeof data.lyrics === 'object') { const a = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.lyrics)) if (typeof v === 'string' && !a[k]) a[k] = v; await dbPut('docs', 'lyrics', a); LYR_ALL = a; }
     rebuildUsage(); relinkState(); commit(); renderHistBtn(); renderSettings(); renderScoreStatus();
     toast('백업을 불러왔어요. 악보 그림은 다시 불러와 주세요');
