@@ -61,7 +61,7 @@ button{cursor:pointer}
 /* 배치 */
 .layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr);grid-template-areas:"base" "pick" "sheet" "chords" "seq"}
 .a-base{grid-area:base}.a-seq{grid-area:seq}.a-chords{grid-area:chords}.a-pick{grid-area:pick}.a-sheet{grid-area:sheet;min-width:0}
-@media (min-width:860px){
+@media (min-width:768px){
   .layout{grid-template-columns:minmax(0,1fr) minmax(330px,400px);grid-template-areas:"base sheet" "chords sheet" "seq sheet" "pick sheet";align-items:start}
   .a-sheet{align-self:stretch}
   .sheet-stick{position:sticky;top:calc(env(safe-area-inset-top,0px) + 14px)}
@@ -224,9 +224,9 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .tray button{border:0;background:transparent;border-radius:10px;padding:8px 2px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.2}
 .tray button b{font-family:var(--f-mono);font-size:13px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
 .tray button[aria-current="true"]{background:var(--navy-soft);color:var(--ink);font-weight:600}
-@media (min-width:860px){.tray{display:none}}
+@media (min-width:768px){.tray{display:none}}
 .scorebtn{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
-@media (max-width:859px){
+@media (max-width:767px){
   .wrap{padding-block:8px 92px}
   .top{align-items:center;gap:8px;padding-bottom:10px;margin-bottom:12px}
   .brand{order:0;flex:1 1 auto;font-size:21px}
@@ -257,7 +257,11 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .pv-tabs:empty{display:none}
 .pv-body{flex:1;min-height:0;overflow:auto;padding:12px 14px;background:var(--bg)}
 .pv-body img{display:block;width:100%;height:auto;background:#ffffff;border-radius:4px;margin:0 auto 12px;cursor:zoom-in}
-.pv-body.zoom img{width:200%;max-width:none;cursor:zoom-out}
+.pv-body.zoom .inkwrap{width:200%;max-width:none}
+.pv-body.zoom img{cursor:zoom-out}
+.inkwrap{position:relative;margin:0 auto 6px}
+.pv-body .inkwrap img{margin:0}
+.inkwrap canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .sheet{margin:0 0 16px}
 .sheet img{margin-bottom:6px}
 .img-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -386,9 +390,21 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .prog-list>li{padding:10px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
 .prog-list>li:first-child{border-top:0}
 .prog-list b{font-family:var(--f-display);font-size:16px}
+.ink{width:min(1240px,calc(100% - 12px));height:calc(100% - 12px)}
+.ink-bar{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.ink-bar .sep{width:1px;height:24px;background:var(--line)}
+.ink-bar .btn[aria-pressed="true"]{background:var(--navy);color:var(--navy-ink);border-color:var(--navy)}
+.ink-bar .seg button{padding:5px 10px;font-size:13px}
+.ink-bar select{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:4px 6px}
+.swatch{width:30px;height:30px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line-strong)}
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--navy)}
+.ink-stage{flex:1;min-height:0;overflow:auto;background:var(--bg);padding:12px;-webkit-overflow-scrolling:touch}
+.ink-page{position:relative;margin:0 auto;background:#ffffff;box-shadow:var(--shadow)}
+.ink-page .bgc,.ink-page img{position:absolute;inset:0;width:100%;height:100%;max-width:none}
+#inkCv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px);opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
-@media (min-width:860px){.toast{bottom:24px}}
+@media (min-width:768px){.toast{bottom:24px}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 
@@ -585,6 +601,11 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 <dialog class="dlg" id="hist" aria-labelledby="histTitle">
   <div class="dlg-head"><h3 id="histTitle">콘티 기록</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
   <div class="dlg-body" id="histBody"></div>
+</dialog>
+<dialog class="dlg ink" id="inkDlg" aria-labelledby="inkTitle">
+  <div class="dlg-head"><h3 id="inkTitle">필기</h3><div class="row-btns"><button class="btn" id="inkCancel" type="button">취소</button><button class="btn primary" id="inkSave" type="button">저장</button></div></div>
+  <div class="ink-bar" id="inkBar"></div>
+  <div class="ink-stage" id="inkStage"><div class="ink-page" id="inkPage"></div></div>
 </dialog>
 <dialog class="dlg" id="progDlg" aria-labelledby="progTitle">
   <div class="dlg-head"><h3 id="progTitle">진행 보관함</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
@@ -1495,13 +1516,14 @@ async function saveRotation(path) {
   try {
     if (ASSETS && DB) { await putAsset(path, blob, imgType(path)); await flushIndex(); }
     if (LOCAL.has(path)) LOCAL.set(path, new File([blob], path.split('/').pop(), {type: imgType(path)}));
+    await turnMarks(path, PV.rot[path], blob);
     clearRot(path); toast(ASSETS && DB ? '돌린 악보를 저장했어요' : '이 기기에서만 돌려 두었어요');
   } catch (e) { toast(UPERR[e && e.code] || '저장하지 못했어요. 다시 눌러 주세요'); }
   PV.busy = null; renderPreview(); renderScoreStatus();
 }
 async function doRemove(path) {
   PV.busy = path; renderPreview();
-  try { clearRot(path); await removeScore(path); toast('악보를 지웠어요'); }
+  try { clearRot(path); await removeScore(path); saveMarks(path, []).catch(() => {}); toast('악보를 지웠어요'); }
   catch (e) { toast('지우지 못했어요. 다시 눌러 주세요'); }
   PV.busy = null; PV.confirm = null; renderPreview(); renderScoreStatus();
 }
@@ -1521,14 +1543,15 @@ function renderPreview() {
     const isPdf = /\.pdf$/i.test(x.p), rot = PV.rot[x.p] || 0, busy = PV.busy === x.p;
     const media = isPdf
       ? h('p', {}, h('a', {href: x.src, target: '_blank', rel: 'noopener'}, 'PDF 악보 열기'))
-      : h('img', {src: x.src, alt: `${song.t} ${PV.key} 악보`, onclick: () => { PV.zoom = !PV.zoom; body.classList.toggle('zoom', PV.zoom); },
-          onerror: e => e.target.replaceWith(h('p', {class: 'hint', text: '이 악보를 불러오지 못했어요. 지우고 다시 올려 주세요.'}))});
+      : inkWrap(h('img', {src: x.src, alt: `${song.t} ${PV.key} 악보`, onclick: () => { PV.zoom = !PV.zoom; body.classList.toggle('zoom', PV.zoom); },
+          onerror: e => e.target.replaceWith(h('p', {class: 'hint', text: '이 악보를 불러오지 못했어요. 지우고 다시 올려 주세요.'}))}), PV.rotUrl[x.p] ? null : x.p);
     const canDelete = (x.up && writer) || (!x.up && x.local);
     const tools = h('div', {class: 'img-tools'},
       h('span', {class: 'src', text: x.up ? '앱에 올라간 악보' : '이 기기 폴더에서 보는 중'}),
       isPdf ? null : [
         h('button', {class: 'icon', type: 'button', disabled: busy, 'aria-label': '왼쪽으로 돌리기', title: '왼쪽으로 돌리기', onclick: () => rotate(x.p, -90)}, '↺'),
-        h('button', {class: 'icon', type: 'button', disabled: busy, 'aria-label': '오른쪽으로 돌리기', title: '오른쪽으로 돌리기', onclick: () => rotate(x.p, 90)}, '↻')],
+        h('button', {class: 'icon', type: 'button', disabled: busy, 'aria-label': '오른쪽으로 돌리기', title: '오른쪽으로 돌리기', onclick: () => rotate(x.p, 90)}, '↻'),
+        h('button', {class: 'btn sm', type: 'button', disabled: busy, onclick: () => openInk({song, path: x.p, key: PV.key})}, '필기')],
       rot ? [
         h('button', {class: 'btn sm primary', type: 'button', disabled: busy, onclick: () => saveRotation(x.p)}, busy ? '저장 중…' : '돌린 대로 저장'),
         h('button', {class: 'btn sm', type: 'button', disabled: busy, onclick: () => { clearRot(x.p); renderPreview(); }}, '취소')] : null,
@@ -1544,10 +1567,13 @@ function renderPreview() {
   if (!shown.length) fill(body, h('div', {class: 'pv-empty'},
     h('p', {text: '이 곡 악보가 아직 앱에 없어요.'}),
     h('p', {class: 'hint', text: '위의 "악보" 버튼에서 "찬양 목록" 폴더를 연결하거나 앱에 올려 두면 바로 보여요. 지금 이 곡만 보려면 파일을 골라 주세요.'}),
-    h('label', {class: 'btn'}, '이 곡 악보 파일 고르기', h('input', {type: 'file', accept: 'image/*,application/pdf', hidden: true, onchange: e => pickOne(e, paths[0])}))));
+    h('div', {class: 'row-btns'},
+      h('label', {class: 'btn'}, '이 곡 악보 파일 고르기', h('input', {type: 'file', accept: 'image/*,application/pdf', hidden: true, onchange: e => pickOne(e, paths[0])})),
+      h('button', {class: 'btn', type: 'button', onclick: () => openInk({song, path: null, key: PV.key, blank: true})}, '오선지에 새로 그리기'))));
   else if (shown.length < items.length) body.append(h('p', {class: 'hint', text: `${items.length - shown.length}장은 아직 앱에 없어요.`}));
   const k = PV.key, pk = parseKey(k), has = inConti(song.id), to = pk ? targetFor(song, k) : '';
   fill($('#pvActions'), 
+    h('button', {class: 'btn', type: 'button', onclick: () => openInk({song, path: null, key: PV.key, blank: true})}, '새 악보 그리기'),
     h('button', {class: 'btn primary', type: 'button', onclick: () => { state.changingBase = false; setBase(song, pk ? k : undefined); $('#pv').close(); toast(`기준곡: ${song.t}`); }},
       pk ? `${k}키로 기준곡 정하기` : '기준곡으로 정하기'),
     h('button', {class: 'btn', type: 'button', disabled: has, onclick: () => { if (addSong(song, k, to || k)) $('#pv').close(); }},
@@ -2082,6 +2108,37 @@ async function savePptBg(file) {
   PPT_BG = await blobToDataUrl(blob);
   try { if (ASSETS && DB) { const r = await ASSETS.upload(blob, {type: blob.type || 'image/jpeg'}); await DB.doc('settings/ppt').set({bg: r.id}); } } catch (e) {}
 }
+// 필기: 획 목록을 JSON 파일로 assets에 두고 db marks/<해시>에 가리킴(폰·맥·아이패드 함께)
+const MARKS = new Map();
+async function loadMarks(path) {
+  if (!path) return [];
+  if (MARKS.has(path)) return MARKS.get(path);
+  let st = [];
+  try { if (DB) { const sn = await DB.doc('marks/' + (PH.get(path) || fnv(path))).get(); const id = sn.exists && sn.data().a; if (id) { const j = await (await fetch('/_blob/' + id)).json(); if (Array.isArray(j)) st = j; } } } catch (e) {}
+  MARKS.set(path, st);
+  return st;
+}
+async function saveMarks(path, strokes) {
+  MARKS.set(path, strokes);
+  if (!DB || !ASSETS) return false;
+  const ref = DB.doc('marks/' + (PH.get(path) || fnv(path)));
+  let old = null;
+  try { const sn = await ref.get(); old = sn.exists ? sn.data().a : null; } catch (e) {}
+  if (!strokes.length) { await ref.delete(); if (old) ASSETS.delete(old).catch(() => {}); return true; }
+  const r = await ASSETS.upload(new Blob([JSON.stringify(strokes)], {type: 'application/json'}), {type: 'application/json'});
+  await ref.set({a: r.id, n: strokes.length});
+  if (old && old !== r.id) ASSETS.delete(old).catch(() => {});
+  return true;
+}
+// 오선지에 새로 그린 악보를 그 곡의 악보로 더한다
+async function addDrawnScore(song, key, blob) {
+  const path = `손악보/${song.t} ${key || ''} ${Date.now()}.png`;
+  EXTRA[path] = [song.t, key || '', song.s || ''];
+  addSongFile(path, {title: song.t, key: key || '', season: song.s || ''});
+  LOCAL.set(path, new File([blob], 'drawn.png', {type: 'image/png'}));
+  if (ASSETS && DB) { await putAsset(path, blob, 'image/png'); await flushIndex(); await saveExtra(); }
+  return path;
+}
 // 진행 보관함: db progs/<id> (폰·맥이 함께 씀)
 const PROG_SHARED = true;
 async function listProgs() { if (!DB) return []; try { return (await DB.collection('progs').get()).docs.map(d => ({id: d.id, ...d.data()})); } catch (e) { return []; } }
@@ -2270,7 +2327,14 @@ async function scoreData(x) {
   const src = await ensureSrc(path);
   if (!src) return null;
   try {
-    const blob = await (await fetch(src)).blob(), bmp = await createImageBitmap(blob);
+    let blob = await (await fetch(src)).blob();
+    const bmp = await createImageBitmap(blob), mk = await loadMarks(path);
+    if (mk.length) {
+      const cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height;
+      const g = cv.getContext('2d'); g.drawImage(bmp, 0, 0);
+      drawStrokes(g, mk, {x: 0, y: 0, w: cv.width, h: cv.height});
+      blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    }
     return {data: (await blobToDataUrl(blob)).replace(/^data:/, ''), w: bmp.width, h: bmp.height};
   } catch (e) { return null; }
 }
@@ -2457,7 +2521,209 @@ function renderPpt() {
       h('button', {class: 'btn primary', type: 'button', disabled: PPTV.busy, onclick: makePpt}, PPTV.busy ? '만드는 중…' : 'PPT 만들기'),
       r ? h('button', {class: 'btn primary', type: 'button', onclick: savePpt}, `저장하기 · ${r.count}장`) : null));
 }
-const canFolderPick = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const IS_IPAD = /iPad/.test(navigator.userAgent) || (!/Android/.test(navigator.userAgent) && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canFolderPick = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !IS_IPAD;
+
+/* ---------- 손글씨(애플펜슬): 악보에 필기하고, 빈 오선지에 새 악보를 그린다 ---------- */
+// 획은 그림 크기에 대한 비율 좌표(0~1)와 필압으로 저장해 어떤 크기로 그려도 같은 자리에 나온다
+const INK_COLORS = [['#111111', '검정'], ['#d12b2b', '빨강'], ['#2456d6', '파랑'], ['#0f8a4b', '초록']];
+let INK = null;
+function drawStrokes(g, strokes, rect) {
+  for (const st of strokes || []) {
+    const pts = st.p;
+    if (!pts || pts.length < 3) continue;
+    const X = i => rect.x + pts[i] * rect.w, Y = i => rect.y + pts[i + 1] * rect.h;
+    const W = i => Math.max(0.8, st.w * rect.w * (st.t === 'pen' ? 0.55 + (pts[i + 2] || 0.5) * 0.9 : 1));
+    g.save();
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = st.c; g.fillStyle = st.c;
+    if (st.t === 'hl') { g.globalAlpha = 0.32; g.globalCompositeOperation = 'multiply'; }
+    if (pts.length === 3) { g.beginPath(); g.arc(X(0), Y(0), W(0) / 2, 0, Math.PI * 2); g.fill(); }
+    else if (st.t === 'hl') { g.lineWidth = W(0); g.beginPath(); g.moveTo(X(0), Y(0)); for (let i = 3; i < pts.length; i += 3) g.lineTo(X(i), Y(i)); g.stroke(); }
+    else {
+      // 굵기가 비슷한 구간은 한 줄로 이어 그린다(이음매가 점선처럼 보이지 않게)
+      let i0 = 0, wd = W(0);
+      for (let i = 3; i <= pts.length; i += 3) {
+        const last = i >= pts.length, wn = last ? 0 : W(i);
+        if (!last && Math.abs(wn - wd) <= Math.max(0.35, wd * 0.12)) continue;
+        const iEnd = last ? pts.length - 3 : i;
+        g.lineWidth = wd; g.beginPath(); g.moveTo(X(i0), Y(i0));
+        for (let j = i0 + 3; j <= iEnd; j += 3) g.lineTo(X(j), Y(j));
+        g.stroke();
+        i0 = iEnd; wd = wn;
+      }
+    }
+    g.restore();
+  }
+}
+// 미리보기 그림 위에 필기를 겹쳐 보여 준다
+function inkWrap(img, path) {
+  const wrap = h('div', {class: 'inkwrap'}, img);
+  loadMarks(path).then(st => {
+    if (!st.length) return;
+    const cv = document.createElement('canvas');
+    const draw = () => { cv.width = img.naturalWidth; cv.height = img.naturalHeight; drawStrokes(cv.getContext('2d'), st, {x: 0, y: 0, w: cv.width, h: cv.height}); };
+    if (img.complete && img.naturalWidth) draw(); else img.addEventListener('load', draw, {once: true});
+    wrap.append(cv);
+  });
+  return wrap;
+}
+// 악보를 돌려 저장하면 필기도 같이 돌린다(deg: 시계 방향 90·180·270)
+async function turnMarks(path, deg, blob) {
+  const st = await loadMarks(path);
+  if (!st.length || !deg) return;
+  const bmp = await createImageBitmap(blob), ratio = deg % 180 ? bmp.height / bmp.width : 1;
+  const f = deg === 90 ? (x, y) => [1 - y, x] : deg === 180 ? (x, y) => [1 - x, 1 - y] : (x, y) => [y, 1 - x];
+  const r4 = v => Math.round(v * 1e4) / 1e4;
+  await saveMarks(path, st.map(o => {
+    const p = o.p.slice();
+    for (let i = 0; i < p.length; i += 3) { const [a, b] = f(p[i], p[i + 1]); p[i] = r4(a); p[i + 1] = r4(b); }
+    return {...o, w: o.w * ratio, p};
+  }));
+}
+function staffPaper() {
+  const W = 1240, H = 1754, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#9aa0b4'; g.lineWidth = 1.6;
+  for (let sIdx = 0; sIdx < 10; sIdx++) {
+    const y0 = 230 + sIdx * 148;
+    if (y0 + 52 > H - 70) break;
+    for (let l = 0; l < 5; l++) { g.beginPath(); g.moveTo(80, y0 + l * 13); g.lineTo(W - 80, y0 + l * 13); g.stroke(); }
+  }
+  return cv;
+}
+async function openInk(o) {
+  const song = o.song;
+  let bg, w, hgt;
+  if (o.blank) { bg = staffPaper(); w = bg.width; hgt = bg.height; }
+  else {
+    const src = await ensureSrc(o.path);
+    if (!src) { toast('이 악보를 불러오지 못했어요'); return; }
+    bg = new Image(); bg.src = src;
+    try { await bg.decode(); } catch (e) { toast('이 악보를 불러오지 못했어요'); return; }
+    w = bg.naturalWidth; hgt = bg.naturalHeight;
+  }
+  INK = {song, path: o.path || null, key: o.key || (song.keys && song.keys[0]) || '', blank: !!o.blank, bg, w, h: hgt,
+    strokes: o.blank ? [] : (await loadMarks(o.path)).slice(), undo: [], redo: [], tool: 'pen', color: INK_COLORS[0][0], size: 1, zoom: 1,
+    penOnly: false, cur: null, erasing: false, dirty: false};
+  $('#inkTitle').textContent = o.blank ? `${song.t} · 새 악보 그리기` : `${song.t} · 필기`;
+  const page = $('#inkPage'), cv = h('canvas', {id: 'inkCv', 'aria-label': '그리는 곳'});
+  bg.classList && bg.classList.add('bgc');
+  fill(page, bg, cv);
+  bindInk(cv);
+  const d = $('#inkDlg');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  renderInkBar();
+  requestAnimationFrame(layoutInk);
+}
+function layoutInk() {
+  if (!INK) return;
+  const stage = $('#inkStage'), page = $('#inkPage'), cv = $('#inkCv');
+  const w = Math.max(200, Math.round((stage.clientWidth - 24) * INK.zoom)), hh = Math.round(w * INK.h / INK.w);
+  page.style.width = w + 'px'; page.style.height = hh + 'px';
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr);
+  applyInkTouch(); redrawInk();
+}
+const applyInkTouch = () => { const cv = $('#inkCv'); if (cv && INK) cv.style.touchAction = INK.penOnly ? 'pan-x pan-y' : 'none'; };
+function redrawInk() {
+  const cv = $('#inkCv'); if (!cv || !INK) return;
+  const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
+  drawStrokes(g, INK.strokes, {x: 0, y: 0, w: cv.width, h: cv.height});
+}
+function inkPush() { INK.undo.push(INK.strokes.slice()); if (INK.undo.length > 60) INK.undo.shift(); INK.redo = []; INK.dirty = true; }
+function bindInk(cv) {
+  const pt = e => {
+    const r = cv.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    return [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4, e.pointerType === 'pen' ? Math.round((e.pressure || 0.5) * 100) / 100 : 0.5];
+  };
+  const eraseAt = p => {
+    const r = 0.018 * INK.size, ar = INK.h / INK.w;
+    const before = INK.strokes.length;
+    INK.strokes = INK.strokes.filter(st => { for (let i = 0; i < st.p.length; i += 3) if (Math.hypot(st.p[i] - p[0], (st.p[i + 1] - p[1]) * ar) < r) return false; return true; });
+    if (INK.strokes.length !== before) redrawInk();
+  };
+  cv.addEventListener('pointerdown', e => {
+    if (!INK) return;
+    if (e.pointerType === 'pen' && !INK.penOnly) { INK.penOnly = true; applyInkTouch(); renderInkBar(); toast('펜슬로 그리고, 손가락으로는 화면을 움직여요'); }
+    if (INK.penOnly && e.pointerType === 'touch') return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    const p = pt(e);
+    inkPush();
+    if (INK.tool === 'eraser') { INK.erasing = true; eraseAt(p); return; }
+    const hl = INK.tool === 'hl';
+    INK.cur = {t: hl ? 'hl' : 'pen', c: hl ? '#ffd400' : INK.color, w: (hl ? 0.022 : 0.0032) * INK.size, p: p.slice()};
+    INK.strokes.push(INK.cur);
+    redrawInk();
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!INK || (!INK.cur && !INK.erasing)) return;
+    if (INK.penOnly && e.pointerType === 'touch') return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs.length ? evs : [e]) {
+      const p = pt(ev);
+      if (INK.erasing) { eraseAt(p); continue; }
+      const a = INK.cur.p, L = a.length;
+      if (Math.hypot(p[0] - a[L - 3], (p[1] - a[L - 2]) * INK.h / INK.w) < 0.0012) continue;
+      a.push(p[0], p[1], p[2]);
+    }
+    if (INK.cur) {
+      // 새로 그은 부분만 덧그린다(빠르게)
+      const a = INK.cur.p, L = a.length, g = cv.getContext('2d');
+      drawStrokes(g, [{...INK.cur, p: a.slice(Math.max(0, L - 9))}], {x: 0, y: 0, w: cv.width, h: cv.height});
+    }
+  });
+  const end = () => { if (!INK) return; if (INK.cur || INK.erasing) { INK.cur = null; INK.erasing = false; redrawInk(); renderInkBar(); } };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+}
+function renderInkBar() {
+  const I = INK; if (!I) return;
+  const sep = () => h('span', {class: 'sep', 'aria-hidden': 'true'});
+  fill($('#inkBar'),
+    INK_COLORS.map(([c, nm]) => h('button', {type: 'button', class: 'swatch', style: `background:${c}`, title: nm, 'aria-label': nm + ' 펜', 'aria-pressed': String(I.tool === 'pen' && I.color === c), onclick: () => { I.tool = 'pen'; I.color = c; renderInkBar(); }})),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(I.tool === 'hl'), onclick: () => { I.tool = 'hl'; renderInkBar(); }}, '형광펜'),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(I.tool === 'eraser'), onclick: () => { I.tool = 'eraser'; renderInkBar(); }}, '지우개'),
+    sep(),
+    h('div', {class: 'seg', role: 'group', 'aria-label': '굵기'}, [[0.6, '가늘게'], [1, '보통'], [1.8, '굵게']].map(([v, l]) =>
+      h('button', {type: 'button', 'aria-pressed': String(I.size === v), onclick: () => { I.size = v; renderInkBar(); }}, l))),
+    sep(),
+    h('button', {type: 'button', class: 'btn sm', disabled: !I.undo.length, onclick: () => { I.redo.push(I.strokes); I.strokes = I.undo.pop(); I.dirty = true; redrawInk(); renderInkBar(); }}, '되돌리기'),
+    h('button', {type: 'button', class: 'btn sm', disabled: !I.redo.length, onclick: () => { I.undo.push(I.strokes); I.strokes = I.redo.pop(); I.dirty = true; redrawInk(); renderInkBar(); }}, '다시'),
+    h('button', {type: 'button', class: 'btn sm danger', disabled: !I.strokes.length, onclick: () => { inkPush(); I.strokes = []; redrawInk(); renderInkBar(); }}, '모두 지우기'),
+    sep(),
+    h('div', {class: 'seg', role: 'group', 'aria-label': '확대'}, [[1, '맞춤'], [1.5, '1.5배'], [2, '2배']].map(([v, l]) =>
+      h('button', {type: 'button', 'aria-pressed': String(I.zoom === v), onclick: () => { I.zoom = v; renderInkBar(); layoutInk(); }}, l))),
+    h('label', {class: 'tapadd'}, h('input', {type: 'checkbox', checked: I.penOnly, onchange: e => { I.penOnly = e.target.checked; applyInkTouch(); }}), '펜슬로만 그리기'),
+    I.blank ? h('label', {class: 'tapadd'}, '키', h('select', {'aria-label': '새 악보의 키', onchange: e => { I.key = e.target.value; }},
+      h('option', {value: '', text: '없음'}), [...MAJ, ...MIN].map(k => h('option', {value: k, selected: k === I.key, text: k})))) : null);
+}
+async function saveInk() {
+  const I = INK; if (!I) return;
+  const btn = $('#inkSave'); btn.disabled = true; btn.textContent = '저장 중…';
+  try {
+    if (I.blank) {
+      const blob = await new Promise(r => I.bg.toBlob(r, 'image/png'));
+      const path = await addDrawnScore(I.song, I.key, blob);
+      await saveMarks(path, I.strokes);
+      commit();
+      const ns = BY_NORM.get(I.song.n);
+      if (PV && ns) { PV.song = ns; PV.key = I.key || ''; }
+      toast('새 악보를 이 곡에 넣었어요');
+    } else {
+      const ok = await saveMarks(I.path, I.strokes);
+      toast(ok ? '필기를 저장했어요' : '필기를 이번에만 보여요(저장 못 함)');
+    }
+    I.dirty = false;
+    $('#inkDlg').close();
+    if (PV) renderPreview();
+  } catch (e) { toast('저장하지 못했어요. 다시 눌러 주세요'); }
+  btn.disabled = false; btn.textContent = '저장';
+}
 
 /* ---------- 진행 보관함: 마디 진행을 이름 붙여 저장·불러오기 ---------- */
 let PROGS = [], PGV = {confirm: null, msg: '', prev: null};
@@ -2703,6 +2969,8 @@ async function buildPages() {
           const img = new Image(); img.src = src; await img.decode();
           const sc = Math.min(halfW / img.naturalWidth, ih / img.naturalHeight), dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
           g.drawImage(img, rx + (halfW - dw) / 2, iy, dw, dh); drawn = true;
+          const mk = await loadMarks(path);
+          if (mk.length) drawStrokes(g, mk, {x: rx + (halfW - dw) / 2, y: iy, w: dw, h: dh});
         } catch (e) {}
       }
       if (!drawn) {
@@ -3055,6 +3323,11 @@ for (const d of [$('#pv'), $('#sm')]) {
   d.addEventListener('close', () => { if (d.id === 'pv' && PV) { Object.keys(PV.rotUrl).forEach(clearRot); PV = null; revokePv(); } });
 }
 $('#pptBtn').addEventListener('click', openPpt);
+$('#inkSave').addEventListener('click', saveInk);
+$('#inkCancel').addEventListener('click', () => { if (INK) INK.dirty = false; $('#inkDlg').close(); });
+$('#inkDlg').addEventListener('cancel', e => { if (INK && INK.dirty) { e.preventDefault(); toast('저장하거나 취소를 눌러 주세요'); } });
+$('#inkDlg').addEventListener('close', () => { INK = null; fill($('#inkPage')); });
+window.addEventListener('resize', () => { if (INK) layoutInk(); });
 $('#progSave').addEventListener('click', () => { openProgs(); });
 $('#progOpen').addEventListener('click', openProgs);
 $('#chartOpen').addEventListener('click', () => openChart());

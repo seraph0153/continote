@@ -331,7 +331,7 @@ function openScoreDialog() {
 function estimateStorage() {
   try { navigator.storage.estimate().then(e => { USAGE = e; renderScoreDialog(); }); } catch (e) {}
 }
-const canFolder = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const canFolder = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function renderScoreDialog() {
   if (!$('#sm').open) return;
   const kids = [
@@ -461,20 +461,22 @@ rep("""async function rotate(path, d) {
   const src = await ensureSrc(path);""")
 rep("""    if (ASSETS && DB) { await putAsset(path, blob, imgType(path)); await flushIndex(); }
     if (LOCAL.has(path)) LOCAL.set(path, new File([blob], path.split('/').pop(), {type: imgType(path)}));
+    await turnMarks(path, PV.rot[path], blob);
     clearRot(path); toast(ASSETS && DB ? '돌린 악보를 저장했어요' : '이 기기에서만 돌려 두었어요');
   } catch (e) { toast(UPERR[e && e.code] || '저장하지 못했어요. 다시 눌러 주세요'); }""",
 """    await putBlob(path, blob, imgType(path));
     if (LOCAL.has(path)) LOCAL.set(path, new File([blob], path.split('/').pop(), {type: imgType(path)}));
+    await turnMarks(path, PV.rot[path], blob);
     clearRot(path); toast('돌린 악보를 저장했어요');
   } catch (e) { toast('저장하지 못했어요. 다시 눌러 주세요'); }""")
 rep("""async function doRemove(path) {
   PV.busy = path; renderPreview();
-  try { clearRot(path); await removeScore(path); toast('악보를 지웠어요'); }
+  try { clearRot(path); await removeScore(path); saveMarks(path, []).catch(() => {}); toast('악보를 지웠어요'); }
   catch (e) { toast('지우지 못했어요. 다시 눌러 주세요'); }
   PV.busy = null; PV.confirm = null; renderPreview(); renderScoreStatus();
 }""", """async function doRemove(path) {
   PV.busy = path; renderPreview();
-  try { clearRot(path); await removeScore(path); toast('악보를 지웠어요'); }
+  try { clearRot(path); await removeScore(path); saveMarks(path, []).catch(() => {}); toast('악보를 지웠어요'); }
   catch (e) { toast('지우지 못했어요. 다시 눌러 주세요'); }
   PV.busy = null; PV.confirm = null; renderScoreStatus();
   const ns = BY_NORM.get(PV.song.n);
@@ -550,6 +552,30 @@ async function savePptBg(file) {
   const {blob} = await prepare(file, file.name);
   await dbPut('files', 'bg:ppt', {blob, type: blob.type, path: 'bg:ppt'});
   PPT_BG = await blobToDataUrl(blob);
+}
+// 필기: 이 기기(IndexedDB) docs 'mark:<해시>'
+const MARKS = new Map();
+async function loadMarks(path) {
+  if (!path) return [];
+  if (MARKS.has(path)) return MARKS.get(path);
+  const v = await dbGet('docs', 'mark:' + (PH.get(path) || fnv(path))).catch(() => null);
+  const st = v && Array.isArray(v.s) ? v.s : [];
+  MARKS.set(path, st);
+  return st;
+}
+async function saveMarks(path, strokes) {
+  MARKS.set(path, strokes);
+  const k = 'mark:' + (PH.get(path) || fnv(path));
+  try { if (strokes.length) await dbPut('docs', k, {s: strokes}); else await dbDel('docs', k); return true; } catch (e) { return false; }
+}
+async function addDrawnScore(song, key, blob) {
+  const path = `손악보/${Date.now()}-${song.t} ${key || ''}.png`;
+  EXTRA[path] = [song.t, key || '', song.s || ''];
+  addSongFile(path, {title: song.t, key: key || '', season: song.s || ''});
+  await putBlob(path, blob, 'image/png');
+  LOCAL.set(path, new File([blob], 'drawn.png', {type: 'image/png'}));
+  await saveSongs();
+  return path;
 }
 // 진행 보관함: 이 기기(IndexedDB) docs 'progs'
 const PROG_SHARED = false;
@@ -650,7 +676,7 @@ function renderSettings() {
       h('button', {class: 'btn sm', type: 'button', onclick: () => { const id = 's' + Date.now().toString(36); SVC[id] = {name: '새 예배', count: 4, dow: 0, label: '새 예배', skipEdge: false}; saveSvc(); renderTop(); renderSettings(); }}, '+ 예배 추가'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { SVC = JSON.parse(JSON.stringify(DEFAULT_SVC)); saveSvc(); if (!SVC[state.svc]) setService(firstSvc()); else commit(); renderSettings(); }}, '기본으로')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '백업'}), h('span', {text: '곡 목록 · 기록 · 설정'})),
-    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·진행 보관함·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
+    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·진행 보관함·기록·설정·필기·손으로 그린 악보가 들어가요. 올린 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요(같은 파일이면 필기가 다시 붙어요).'}),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
@@ -668,7 +694,10 @@ function renderSettings() {
 }
 async function makeBackup() {
   const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {}, progs = (await dbGet('docs', 'progs').catch(() => null)) || {};
-  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, progs, pptOpt: state.pptOpt};
+  const marks = {}, drawn = {};
+  for (const [k, v] of await dbAll('docs').catch(() => [])) if (String(k).startsWith('mark:') && v && Array.isArray(v.s)) marks[k] = v;
+  for (const [, v] of await dbAll('files').catch(() => [])) if (v && v.blob && String(v.path || '').startsWith('손악보/')) drawn[v.path] = await blobToDataUrl(v.blob);
+  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, progs, pptOpt: state.pptOpt, marks, drawn};
   try { await saveFiles([{filename: `콘티노트 백업 ${ymd(new Date())}.json`, data: JSON.stringify(data)}]); toast('백업 파일을 만들었어요'); }
   catch (e) { if (!e || e.code !== 'declined') toast('백업 파일을 저장하지 못했어요'); }
 }
@@ -686,8 +715,10 @@ async function restoreBackup(file) {
     if (data.seasonOv && typeof data.seasonOv === 'object') state.seasonOv = {...state.seasonOv, ...data.seasonOv};
     if (data.progs && typeof data.progs === 'object') { const a = (await dbGet('docs', 'progs').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.progs)) if (v && typeof v === 'object' && !a[k]) a[k] = v; await dbPut('docs', 'progs', a); }
     if (data.lyrics && typeof data.lyrics === 'object') { const a = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.lyrics)) if (typeof v === 'string' && !a[k]) a[k] = v; await dbPut('docs', 'lyrics', a); LYR_ALL = a; }
+    if (data.drawn && typeof data.drawn === 'object') for (const [p, u] of Object.entries(data.drawn)) if (KNOWN.has(p) && typeof u === 'string' && u.startsWith('data:image/') && !INDEX.has(PH.get(p) || fnv(p))) await putBlob(p, await (await fetch(u)).blob(), 'image/png');
+    if (data.marks && typeof data.marks === 'object') { const have = new Set(await dbKeys('docs')); for (const [k, v] of Object.entries(data.marks)) if (/^mark:[0-9a-f]{8}$/.test(k) && v && Array.isArray(v.s) && !have.has(k)) await dbPut('docs', k, {s: v.s}); MARKS.clear(); }
     rebuildUsage(); relinkState(); commit(); renderHistBtn(); renderSettings(); renderScoreStatus();
-    toast('백업을 불러왔어요. 악보 그림은 다시 불러와 주세요');
+    toast('백업을 불러왔어요. 올린 악보 그림은 다시 불러와 주세요');
   } catch (e) { toast('백업 파일을 읽지 못했어요'); }
 }
 $('#setBtn').addEventListener('click', () => { const d = $('#setDlg'); if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); } renderSettings(); });
