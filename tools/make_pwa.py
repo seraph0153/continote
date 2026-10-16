@@ -809,7 +809,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
 }
-if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt};
+if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt, mel: () => MEL, openChart, chartState: () => CH};
 '''
 rep("// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시", SETTINGS.strip('\n') + "\n// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시")
 

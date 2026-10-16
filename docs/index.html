@@ -20,7 +20,7 @@ img{max-width:100%}
 <title>콘티노트</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Music&display=swap">
 <style>
 /* Layout: 왼쪽은 곡을 고르고 화음을 듣는 작업대, 오른쪽에는 매주 보내는 콘티 한 장이 붙어 있다 */
 :root{
@@ -421,6 +421,12 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .ink-page{position:relative;margin:0 auto;background:#ffffff;box-shadow:var(--shadow)}
 .ink-page .bgc,.ink-page img{position:absolute;inset:0;width:100%;height:100%;max-width:none}
 #inkCv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.mg{font-family:"Noto Music","Apple Symbols","Segoe UI Symbol",serif;font-size:1.3em;line-height:1;margin-right:3px}
+.mel-hint{margin:0;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+@media (max-width:767px){.mel-hint{font-size:11.5px;padding:4px 10px}}
+.mel-sec{background:#ffffff;border-radius:8px;padding:8px 12px 2px;margin:0 auto 12px;max-width:1224px;box-shadow:var(--shadow)}
+.mel-sec h4{margin:0 0 2px;color:#24368f;font-size:14px;font-weight:600}
+.mel-cv{display:block;width:100%;touch-action:none;cursor:crosshair}
 .svc-list{display:flex;flex-direction:column;gap:8px}
 .svc-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:6px 8px;align-items:center}
 .svc-row select{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:6px;font-size:14px}
@@ -530,10 +536,12 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
         <div class="seg" role="group" aria-label="반주" id="rhythmSeg"></div>
         <label class="tapadd" for="seqClick"><input type="checkbox" id="seqClick"> 메트로놈</label>
         <label class="tapadd" for="seqLoop"><input type="checkbox" id="seqLoop"> 반복</label>
+        <label class="tapadd" for="seqMel"><input type="checkbox" id="seqMel"> 멜로디 소리</label>
       </div>
       <div class="seq-lib">
         <button class="btn sm" id="progSave" type="button">진행 저장</button>
         <button class="btn sm" id="progOpen" type="button">진행 보관함</button>
+        <button class="btn sm" id="melOpen" type="button">멜로디 넣기</button>
         <button class="btn sm" id="chartOpen" type="button">코드 악보 만들기</button>
         <span class="hint" id="progNow"></span>
       </div>
@@ -643,6 +651,12 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 <dialog class="dlg" id="hist" aria-labelledby="histTitle">
   <div class="dlg-head"><h3 id="histTitle">콘티 기록</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
   <div class="dlg-body" id="histBody"></div>
+</dialog>
+<dialog class="dlg ink" id="melDlg" aria-labelledby="melTitle">
+  <div class="dlg-head"><h3 id="melTitle">멜로디 넣기</h3><div class="row-btns"><button class="btn" id="melPlay" type="button">▶ 듣기</button><button class="btn" id="melStop" type="button">■ 멈춤</button><button class="btn primary" id="melDone" type="button">다 됐어요</button></div></div>
+  <div class="ink-bar" id="melBar"></div>
+  <p class="hint mel-hint">오선을 콕 찍으면 그 높이·박자에 음표가 들어가요. 같은 음표를 한 번 더 찍으면 지워지고, 빈 곳은 쉼표가 돼요. 가사는 마디 진행의 가사 칸에 적으면 글자 수가 음표 수와 같을 때 음표 밑에 한 글자씩 들어가요.</p>
+  <div class="ink-stage" id="melStage"></div>
 </dialog>
 <dialog class="dlg ink" id="inkDlg" aria-labelledby="inkTitle">
   <div class="dlg-head"><h3 id="inkTitle">필기</h3><div class="row-btns"><button class="btn" id="inkCancel" type="button">취소</button><button class="btn primary" id="inkSave" type="button">저장</button></div></div>
@@ -1800,6 +1814,7 @@ function setMeter(m) {
   const S = state.seq, oldN = METERS[S.meter].n, n = METERS[m].n;
   if (m === S.meter) return;
   S.sections.forEach(sec => { sec.bars = sec.bars.map(bar => { const nb = Array(n).fill(null); bar.forEach((c, i) => { const j = Math.floor(i * n / oldN); if (c && !nb[j]) nb[j] = c; }); return nb; }); });
+  S.sections.forEach(sec => { if (Array.isArray(sec.mel)) sec.mel = sec.mel.map(b => (b || []).filter(x => x.t + x.d <= barT(m))); });
   S.meter = m;
   commit(['seq']);
 }
@@ -1818,7 +1833,7 @@ function renderSeq() {
   $('#bpmOut').textContent = (M.sub === 3 ? '♩.=' : '♩=') + S.bpm;
   fill($('#rhythmSeg'), [['change', '코드 바뀔 때만'], ['beat', M.sub === 3 ? '셋잇단 반주' : '박마다']].map(([v, l]) =>
     h('button', {type: 'button', 'aria-pressed': String(S.rhythm === v), onclick: () => { S.rhythm = v; commit(['seq']); }}, l)));
-  $('#seqClick').checked = !!S.click; $('#seqLoop').checked = !!S.loop;
+  $('#seqClick').checked = !!S.click; $('#seqLoop').checked = !!S.loop; $('#seqMel').checked = S.melOn !== false;
   renderPalette(); renderBuilder(); renderSections(); renderKeymap();
   $('#seqRec').setAttribute('aria-pressed', String(!!(SEQP && SEQP.rec)));
   if (SEQP) { SEQP.beats = (SEQP.rec ? SEQP.beats.slice(0, SEQP.recStart) : []).concat(seqFlatten(SEQP.only)); SEQP.shownKey = null; }
@@ -1864,7 +1879,7 @@ function renderSections() {
       h('select', {'aria-label': '구간 이름', onchange: e => { sec.name = e.target.value; save(); }}, SEC_NAMES.map(nm => h('option', {value: nm, selected: nm === sec.name, text: nm}))),
       h('span', {class: 'hint', text: `${sec.bars.length}마디`}),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { sec.bars.push(Array(n).fill(null)); commit(['seq']); }}, '마디 +'),
-      h('button', {class: 'btn sm', type: 'button', disabled: sec.bars.length <= 1, onclick: () => { sec.bars.pop(); commit(['seq']); }}, '마디 −'),
+      h('button', {class: 'btn sm', type: 'button', disabled: sec.bars.length <= 1, onclick: () => { sec.bars.pop(); if (Array.isArray(sec.mel)) sec.mel.length = Math.min(sec.mel.length, sec.bars.length); commit(['seq']); }}, '마디 −'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => seqStart(si)}, '▶ 이 구간만'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { S.sections.splice(si + 1, 0, JSON.parse(JSON.stringify(sec))); commit(['seq']); }}, '복사'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { LYSEC = LYSEC === si ? -1 : si; renderSections(); }}, LYSEC === si ? '가사 닫기' : '가사 한꺼번에'),
@@ -1884,7 +1899,7 @@ function renderSections() {
     h('div', {class: 'mbars'}, sec.bars.map((bar, bi) => {
       barNo++;
       const no = barNo;
-      return h('div', {class: 'mbar'}, h('div', {class: 'mbar-n', text: String(no)}),
+      return h('div', {class: 'mbar'}, h('div', {class: 'mbar-n', text: String(no) + ((sec.mel && sec.mel[bi] && sec.mel[bi].length) ? ' ♪' : '')}),
         h('div', {class: 'cells', style: `grid-template-columns:repeat(${n},minmax(0,1fr))`}, bar.map((cell, ki) => {
           const key = `${si}:${bi}:${ki}`;
           if (!cell) return h('button', {type: 'button', class: 'cell' + (prev ? ' cont' : ''), 'data-cell': key, 'aria-label': `${no}마디 ${ki + 1}박 비어 있음`, onclick: () => tapCell(key)});
@@ -1925,7 +1940,7 @@ function seqStart(only, rec) {
   if (!ac()) { toast('이 브라우저는 소리를 낼 수 없어요'); return; }
   seqStop(); stopSeq();
   let beats = seqFlatten(only), recStart = 0;
-  if (!rec && !beats.some(b => b.c)) { toast('칸에 코드를 먼저 놓아 주세요'); return; }
+  if (!rec && !beats.some(b => b.c) && !state.seq.sections.some(hasMel)) { toast('칸에 코드를 먼저 놓아 주세요'); return; }
   if (rec) {
     const n = METERS[state.seq.meter].n;
     beats = Array.from({length: n}, (_, i) => ({key: null, c: null, first: i === 0, label: `녹음 준비 ${n - i}`})).concat(beats);
@@ -1958,6 +1973,7 @@ function seqTick() {
       pnote(upper[1 % L], t + P.spb / 3, 0.15); pnote(upper[2 % L] + (L < 3 ? 12 : 0), t + P.spb * 2 / 3, 0.15);
     }
     if (S.click) clickAt(t, bt.first);
+    schedMel(bt.key, t, P.spb);
     P.marks.push({t, key: bt.key, label: bt.label});
     P.i++; P.next += P.spb;
   }
@@ -1979,13 +1995,13 @@ function seqFrame() {
 function seqStop() {
   const P = SEQP; if (!P) return;
   clearInterval(P.timer); cancelAnimationFrame(P.raf); SEQP = null;
-  if (AC) hush(AC.currentTime);
+  if (AC) { hush(AC.currentTime); mhush(AC.currentTime); }
   markCell(null); $('#seqPos').textContent = '';
   $('#seqRec').setAttribute('aria-pressed', 'false');
   if (P.rec && P.hits) toast(`코드 ${P.hits}개를 녹음했어요. ▶ 처음부터 재생으로 들어 보세요`);
 }
 // 어디서든 소리를 멈춘다(Esc, 멈춤 버튼)
-function stopSound() { seqStop(); stopSeq(); if (AC) hush(AC.currentTime); markChip(-1); light([]); }
+function stopSound() { seqStop(); stopSeq(); if (AC) { hush(AC.currentTime); mhush(AC.currentTime); } markChip(-1); light([]); }
 
 /* ---------- 숫자키 연주·녹음 ---------- */
 const KM_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
@@ -2717,7 +2733,7 @@ function layoutInk() {
   cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr);
   applyInkTouch(); redrawInk();
 }
-const applyInkTouch = () => { const cv = $('#inkCv'); if (cv && INK) cv.style.touchAction = INK.penOnly ? 'pan-x pan-y' : 'none'; };
+const applyInkTouch = () => { const cv = $('#inkCv'); if (cv) cv.style.touchAction = 'none'; };
 function redrawInk() {
   const cv = $('#inkCv'); if (!cv || !INK) return;
   const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
@@ -2739,7 +2755,11 @@ function bindInk(cv) {
   cv.addEventListener('pointerdown', e => {
     if (!INK) return;
     if (e.pointerType === 'pen' && !INK.penOnly) { INK.penOnly = true; applyInkTouch(); renderInkBar(); toast('펜슬로 그리고, 손가락으로는 화면을 움직여요'); }
-    if (INK.penOnly && e.pointerType === 'touch') return;
+    if (INK.penOnly && e.pointerType === 'touch') {
+      const st = $('#inkStage'); INK.pan = {id: e.pointerId, x0: e.clientX, y0: e.clientY, sl: st.scrollLeft, stp: st.scrollTop};
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      return;
+    }
     e.preventDefault();
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     const p = pt(e);
@@ -2751,6 +2771,7 @@ function bindInk(cv) {
     redrawInk();
   });
   cv.addEventListener('pointermove', e => {
+    if (INK && INK.pan && INK.pan.id === e.pointerId) { const st = $('#inkStage'); st.scrollTop = INK.pan.stp - (e.clientY - INK.pan.y0); st.scrollLeft = INK.pan.sl - (e.clientX - INK.pan.x0); return; }
     if (!INK || (!INK.cur && !INK.erasing)) return;
     if (INK.penOnly && e.pointerType === 'touch') return;
     e.preventDefault();
@@ -2768,7 +2789,7 @@ function bindInk(cv) {
       drawStrokes(g, [{...INK.cur, p: a.slice(Math.max(0, L - 9))}], {x: 0, y: 0, w: cv.width, h: cv.height});
     }
   });
-  const end = () => { if (!INK) return; if (INK.cur || INK.erasing) { INK.cur = null; INK.erasing = false; redrawInk(); renderInkBar(); } };
+  const end = e => { if (!INK) return; if (INK.pan && INK.pan.id === e.pointerId) { INK.pan = null; return; } if (INK.cur || INK.erasing) { INK.cur = null; INK.erasing = false; redrawInk(); renderInkBar(); } };
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
 }
@@ -2814,6 +2835,482 @@ async function saveInk() {
     if (PV) renderPreview();
   } catch (e) { toast('저장하지 못했어요. 다시 눌러 주세요'); }
   btn.disabled = false; btn.textContent = '저장';
+}
+
+/* ---------- 멜로디 악보: 마디 진행 위 오선을 펜슬·손가락으로 콕 찍어 음표를 넣고, 리드시트로 그린다 ---------- */
+// 음표 {t: 마디 안 시작, d: 길이(둘 다 16분음표 단위), p: 으뜸음에서 몇 음 위(음계 단계), a: 음계 음에서 반음 올림 1·내림 -1}
+// 코드처럼 키에 대한 상대값이라 키를 바꾸면 멜로디도 그대로 옮겨진다
+const MFONT = '"Noto Music", "Apple Symbols", "Segoe UI Symbol", serif';
+const MTXT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+const MMONO = '"IBM Plex Mono", "SF Mono", Menlo, monospace';
+const BAR_T = {'4/4': 16, '3/4': 12, '6/8': 12, '12/8': 24};
+const barT = m => BAR_T[m] || 16;
+const beatT = m => METERS[m] && METERS[m].sub === 3 ? 6 : 4;
+const LPC = [0, 2, 4, 5, 7, 9, 11];
+const m7 = n => ((n % 7) + 7) % 7;
+const natMidi = pos => 60 + 12 * Math.floor(pos / 7) + LPC[m7(pos)];
+// 조표: 글자(C~B)마다 키에서 올리고 내리는 반음 수.
+// 으뜸음 자리는 멜로디를 처음 적은 키(mk)에서 가장 가깝게 옮긴 자리(G→Bb은 3도 위로, 6도 아래가 아니라)
+const tpos0 = L => L === 6 ? -1 : L;
+function keyInfo(pk, mk) {
+  const nm = keyName(pk), L = 'CDEFGAB'.indexOf(nm[0]), sc = STEPS[pk.minor ? 'min' : 'maj'], ks = Array(7).fill(0);
+  for (let i = 0; i < 7; i++) { const l = (L + i) % 7; let d = mod(pk.pc + sc[i] - LPC[l]); if (d > 6) d -= 12; ks[l] = d; }
+  let tpos = tpos0(L);
+  const a = mk && parseKey(mk);
+  if (a) { const La = 'CDEFGAB'.indexOf(keyName(a)[0]); let st = m7(L - La); if (st > 3) st -= 7; tpos = tpos0(La) + st; }
+  return {L, ks, tpos};
+}
+const melPos = (n, K) => K.tpos + n.p;
+const melAlt = (n, K) => K.ks[m7(melPos(n, K))] + (n.a || 0);
+const melMidi = (n, K) => natMidi(melPos(n, K)) + melAlt(n, K);
+const hasMel = sec => !!(sec && Array.isArray(sec.mel) && sec.mel.some(b => b && b.length));
+const ACC_GL = {'-2': '\u{1D12B}', '-1': '♭', '0': '♮', '1': '♯', '2': '\u{1D12A}'};
+
+// 마디 안 빈 곳을 박에 맞는 쉼표로 나눈다
+function restSplit(t0, t1, meter) {
+  const BT = barT(meter), comp = beatT(meter) === 6, out = [];
+  if (t0 === 0 && t1 === BT) return [{t: 0, d: BT, full: true}];
+  const opts = comp ? [[12, 12], [6, 6], [2, 2], [1, 1]] : [[8, 8], [4, 4], [2, 2], [1, 1]];
+  for (let t = t0; t < t1;) { const o = opts.find(([d, al]) => t % al === 0 && t + d <= t1) || [1, 1]; out.push({t, d: o[0]}); t += o[0]; }
+  return out;
+}
+
+// 글꼴마다 기호 크기가 달라서, 그려 보고 잰 크기로 맞춘다
+const GLM = new Map();
+function glyphM(g, ch) {
+  if (GLM.has(ch)) return GLM.get(ch);
+  g.save(); g.font = `100px ${MFONT}`; g.textBaseline = 'alphabetic';
+  const mt = g.measureText(ch); g.restore();
+  const v = {asc: mt.actualBoundingBoxAscent || 70, desc: mt.actualBoundingBoxDescent || 10, l: mt.actualBoundingBoxLeft || 0, w: (mt.actualBoundingBoxRight || mt.width) + (mt.actualBoundingBoxLeft || 0)};
+  GLM.set(ch, v);
+  return v;
+}
+// 기호의 높이를 hgt로 맞추고, 위·아래·가운데 중 하나를 y에 맞춰 그린다. 그린 폭을 돌려준다
+function glyph(g, ch, x, hgt, at, y) {
+  const M = glyphM(g, ch), k = hgt / (M.asc + M.desc), px = 100 * k;
+  g.font = `${px}px ${MFONT}`; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  const by = at === 'top' ? y + M.asc * k : at === 'bottom' ? y - M.desc * k : y + (M.asc - M.desc) * k / 2;
+  g.fillText(ch, x + M.l * k, by);
+  return M.w * k;
+}
+
+const melRowH = (sp, lyOn) => sp * (6.2 + 4 + 3.2 + (lyOn ? 2.6 : 0.4));
+// 한 줄(여러 마디)을 그린다. R: {x, y, w, sp, pk, meter, perRow, items: [{bar, mel, ly, no, bi}], time, end, edit, lyOn, slash, ghost}
+function drawMelRow(g, R) {
+  const {sp, meter} = R, K = keyInfo(R.pk, R.mk), fl = flatsFor(R.pk), BT = barT(meter), bt = beatT(meter), hs = sp / 2;
+  const staffTop = R.y + sp * 6.2, yOf = pos => staffTop + (10 - pos) * hs, lw = Math.max(1, sp * 0.1), INK = '#16192b';
+  const line = (x0, y0, x1, y1, w) => { g.lineWidth = w || lw; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+  g.save();
+  g.strokeStyle = INK; g.fillStyle = INK; g.lineCap = 'butt';
+  // 머리: 높은음자리표·조표·(첫 줄) 박자표
+  let cx = R.x + sp * 0.4;
+  g.fillStyle = INK;
+  cx += glyph(g, '\u{1D11E}', cx, sp * 7.0, 'bottom', staffTop + sp * 5.35) + sp * 0.5;
+  const nS = K.ks.filter(v => v > 0).length, nF = K.ks.filter(v => v < 0).length;
+  [10, 7, 11, 8, 5, 9, 6].slice(0, nS).forEach((pos, i) => glyph(g, '♯', cx + i * sp * 1.05, sp * 2.7, 'mid', yOf(pos)));
+  [6, 9, 5, 8, 4, 7, 3].slice(0, nF).forEach((pos, i) => glyph(g, '♭', cx + i * sp * 1.0, sp * 2.5, 'bottom', yOf(pos) + sp * 0.55));
+  cx += Math.max(nS, nF) * sp * 1.05 + (nS || nF ? sp * 0.5 : 0);
+  if (R.time) {
+    const [a, b] = meter.split('/');
+    g.font = `700 ${sp * 2.3}px Georgia, "Times New Roman", serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = Math.max(g.measureText(a).width, g.measureText(b).width);
+    g.fillText(a, cx + tw / 2, yOf(8) + sp * 0.12); g.fillText(b, cx + tw / 2, yOf(4) + sp * 0.12);
+    cx += tw + sp * 0.8;
+    g.textAlign = 'left';
+  }
+  cx += sp * 0.3;
+  const bw = (R.x + R.w - cx) / R.perRow, xEnd = cx + bw * R.items.length;
+  for (let i = 0; i < 5; i++) line(R.x, staffTop + i * sp, xEnd, staffTop + i * sp);
+  const bars = [];
+  R.items.forEach((it, k) => {
+    const x0 = cx + k * bw, x1 = x0 + bw, nx0 = x0 + sp * 1.3, nx1 = x1 - sp * 1.2, tx = t => nx0 + t / BT * (nx1 - nx0);
+    bars.push({bi: it.bi, x0, x1, nx0, nx1});
+    // 편집할 때: 박 자리 안내선, 연필이 가리키는 자리
+    if (R.edit) {
+      g.save(); g.strokeStyle = '#d9dcea'; g.setLineDash([sp * 0.3, sp * 0.3]);
+      for (let b = 1; b < BT / bt; b++) line(tx(b * bt) - sp * 0.2, staffTop - sp * 2.5, tx(b * bt) - sp * 0.2, staffTop + sp * 6.5);
+      g.restore();
+      const G = R.ghost;
+      if (G && G.bi === it.bi) {
+        g.save(); g.fillStyle = G.erase ? 'rgba(209,43,43,0.12)' : 'rgba(36,86,214,0.10)';
+        g.fillRect(tx(G.t) - sp * 0.2, staffTop - sp * 2.6, Math.max(sp, tx(G.t + G.d) - tx(G.t)), sp * 9.2); g.restore();
+      }
+    }
+    // 마디줄
+    g.strokeStyle = INK;
+    if (R.end && k === R.items.length - 1) { line(x1 - sp * 0.75, staffTop, x1 - sp * 0.75, staffTop + 4 * sp); line(x1 - sp * 0.2, staffTop, x1 - sp * 0.2, staffTop + 4 * sp, sp * 0.4); }
+    else line(x1, staffTop, x1, staffTop + 4 * sp);
+    // 마디 번호
+    if (R.edit || k === 0) { g.fillStyle = '#8a90a8'; g.font = `500 ${sp * 1.05}px ${MTXT}`; g.textBaseline = 'alphabetic'; g.fillText(String(it.no), x0 + (k === 0 ? 0 : sp * 0.2), R.y + sp * 1.1); }
+    // 코드(마디 진행의 박 자리 그대로)
+    const cells = it.bar || [];
+    cells.forEach((cell, ki) => {
+      if (!cell) return;
+      let nk = ki + 1; while (nk < cells.length && !cells[nk]) nk++;
+      const maxW = (nk < cells.length ? tx(nk * bt) : x1) - tx(ki * bt) - sp * 0.4;
+      let sz = sp * 1.75, name = chordName(chordOf(cell, R.pk), fl);
+      g.font = `600 ${sz}px ${MMONO}`;
+      while (g.measureText(name).width > maxW && sz > sp * 1.0) { sz -= 1; g.font = `600 ${sz}px ${MMONO}`; }
+      g.fillStyle = '#a1232d'; g.textBaseline = 'alphabetic';
+      g.fillText(name, tx(ki * bt) - sp * 0.2, R.y + sp * 3.0);
+    });
+    g.fillStyle = INK;
+    const notes = (it.mel || []).filter(n => n && n.t >= 0 && n.t < BT).slice().sort((a, b) => a.t - b.t);
+    // 멜로디가 없는 구간은 박마다 빗금(코드만 치는 마디)
+    if (!notes.length && R.slash) {
+      if (!R.edit) for (let b = 0; b < BT / bt; b++) { const sx = tx(b * bt) + sp * 0.8; line(sx - sp * 0.55, yOf(5), sx + sp * 0.55, yOf(7), sp * 0.42); }
+    } else {
+      // 쉼표
+      let tc = 0;
+      const rests = [];
+      for (const n of notes) { if (n.t > tc) rests.push(...restSplit(tc, n.t, meter)); tc = Math.max(tc, n.t + n.d); }
+      if (tc < BT && (notes.length || !R.edit)) rests.push(...restSplit(tc, BT, meter));
+      for (const r of rests) {
+        const rx = r.full ? (x0 + x1) / 2 - sp * 0.6 : tx(r.t) + sp * 0.1;
+        if (r.full || r.d === 16 || r.d === 24) g.fillRect(rx, yOf(8), sp * 1.2, sp * 0.5);
+        else if (r.d === 8 || r.d === 12) g.fillRect(rx, yOf(6) - sp * 0.5, sp * 1.2, sp * 0.5);
+        else if (r.d === 4 || r.d === 6) glyph(g, '\u{1D13D}', rx, sp * 2.9, 'mid', yOf(6));
+        else if (r.d === 2 || r.d === 3) glyph(g, '\u{1D13E}', rx, sp * 1.9, 'mid', yOf(6.4));
+        else glyph(g, '\u{1D13F}', rx, sp * 2.9, 'mid', yOf(5.6));
+        if (!r.full && (r.d === 12 || r.d === 6 || r.d === 3)) { g.beginPath(); g.arc(rx + sp * 1.6, yOf(7), sp * 0.17, 0, Math.PI * 2); g.fill(); }
+      }
+    }
+    // 음표: 머리 위치, 기둥 방향, 묶음(같은 박 안의 8분·16분)
+    const info = notes.map(n => {
+      const pos = melPos(n, K), whole = n.d >= 16, rx = whole ? sp * 0.78 : sp * 0.62;
+      return {n, pos, rx, whole, hx: tx(n.t) + rx + sp * 0.15, hy: yOf(pos), up: pos < 6, beam: null};
+    });
+    let grp = null;
+    info.forEach((o, i) => {
+      if (o.n.d <= 3 && grp && grp.end === o.n.t && Math.floor(o.n.t / bt) === grp.beat) { grp.ns.push(o); grp.end = o.n.t + o.n.d; o.grp = grp; }
+      else { grp = o.n.d <= 3 ? {ns: [o], end: o.n.t + o.n.d, beat: Math.floor(o.n.t / bt)} : null; o.grp = grp; }
+    });
+    const cur = {};
+    for (const o of info) {
+      const {n, pos, hx, hy, rx} = o;
+      // 덧줄
+      for (let p = 12; p <= pos; p += 2) line(hx - rx - sp * 0.4, yOf(p), hx + rx + sp * 0.4, yOf(p));
+      for (let p = 0; p >= pos; p -= 2) line(hx - rx - sp * 0.4, yOf(p), hx + rx + sp * 0.4, yOf(p));
+      // 임시표(마디 안에서 같은 자리는 한 번만)
+      const alt = melAlt(n, K), want = pos in cur ? cur[pos] : K.ks[m7(pos)];
+      if (alt !== want && ACC_GL[alt]) {
+        const ch = ACC_GL[alt];
+        if (alt === -1) glyph(g, ch, hx - rx - sp * 1.2, sp * 2.3, 'bottom', hy + sp * 0.5);
+        else glyph(g, ch, hx - rx - sp * 1.2, sp * 2.5, 'mid', hy);
+      }
+      cur[pos] = alt;
+      // 머리
+      g.save(); g.translate(hx, hy); g.rotate(o.whole ? 0 : -0.35); g.beginPath();
+      if (n.d >= 8) { g.ellipse(0, 0, rx * 0.86, sp * 0.33, 0, 0, Math.PI * 2); g.lineWidth = sp * 0.2; g.stroke(); }
+      else { g.ellipse(0, 0, rx, sp * 0.43, 0, 0, Math.PI * 2); g.fill(); }
+      g.restore();
+      // 점
+      if ([3, 6, 12, 24].includes(n.d)) { g.beginPath(); g.arc(hx + rx + sp * 0.5, pos % 2 === 0 ? hy - hs : hy, sp * 0.17, 0, Math.PI * 2); g.fill(); }
+    }
+    // 기둥·꼬리·묶음
+    const stemW = Math.max(1, sp * 0.11);
+    const stemX = (o, up) => up ? o.hx + o.rx * 0.92 : o.hx - o.rx * 0.92;
+    for (const o of info) {
+      if (o.whole || (o.grp && o.grp.ns.length > 1)) continue;
+      const sx = stemX(o, o.up), ey = o.up ? Math.min(o.hy - sp * 3.4, yOf(6)) : Math.max(o.hy + sp * 3.4, yOf(6));
+      line(sx, o.hy + (o.up ? -sp * 0.15 : sp * 0.15), sx, ey, stemW);
+      if (o.n.d <= 3) {
+        const s = o.up ? 1 : -1;
+        for (let j = 0; j < (o.n.d === 1 ? 2 : 1); j++) {
+          const y0 = ey + s * j * sp * 0.85;
+          g.beginPath(); g.moveTo(sx, y0);
+          g.bezierCurveTo(sx + sp * 0.15, y0 + s * sp * 1.0, sx + sp * 1.3, y0 + s * sp * 1.3, sx + sp * 0.85, y0 + s * sp * 2.9);
+          g.bezierCurveTo(sx + sp * 1.0, y0 + s * sp * 1.7, sx + sp * 0.4, y0 + s * sp * 1.35, sx, y0 + s * sp * 1.05);
+          g.closePath(); g.fill();
+        }
+      }
+    }
+    const groups = [...new Set(info.map(o => o.grp).filter(q => q && q.ns.length > 1))];
+    for (const gr of groups) {
+      const ns = gr.ns, up = ns.reduce((a, o) => a + o.pos, 0) / ns.length < 6, s = up ? 1 : -1, bh = sp * 0.48;
+      const f = ns[0], l = ns[ns.length - 1], xF = stemX(f, up), xL = stemX(l, up);
+      let yF = f.hy - s * sp * 3.4, yL = l.hy - s * sp * 3.4;
+      let slope = xL > xF ? (yL - yF) / (xL - xF) : 0;
+      slope = Math.max(-0.22, Math.min(0.22, slope));
+      let by = x => yF + slope * (x - xF);
+      // 모든 기둥이 너무 짧지 않게 들보를 옮긴다
+      let shift = 0;
+      for (const o of ns) { const need = o.hy - s * sp * 2.6, at = by(stemX(o, up)); shift = up ? Math.min(shift, need - at) : Math.max(shift, need - at); }
+      const by2 = x => by(x) + shift;
+      for (const o of ns) line(stemX(o, up), o.hy - s * sp * 0.15, stemX(o, up), by2(stemX(o, up)) + s * bh * 0.5, stemW);
+      const beam = (xa, xb, off) => { g.beginPath(); g.moveTo(xa, by2(xa) + s * off); g.lineTo(xb, by2(xb) + s * off); g.lineTo(xb, by2(xb) + s * (off + bh)); g.lineTo(xa, by2(xa) + s * (off + bh)); g.closePath(); g.fill(); };
+      beam(xF - stemW / 2, xL + stemW / 2, 0);
+      ns.forEach((o, i) => {
+        if (o.n.d !== 1) return;
+        const xo = stemX(o, up), prev = ns[i - 1], next = ns[i + 1];
+        if (next && next.n.d === 1) beam(xo - stemW / 2, stemX(next, up) + stemW / 2, sp * 0.78);
+        else if (!(prev && prev.n.d === 1)) { if (next) beam(xo - stemW / 2, xo + sp * 1.1, sp * 0.78); else beam(xo - sp * 1.1, xo + stemW / 2, sp * 0.78); }
+      });
+    }
+    // 연필이 가리키는 음 미리보기
+    const G = R.ghost;
+    if (R.edit && G && G.bi === it.bi && !G.erase) {
+      const hx = tx(G.t) + sp * 0.77, hy = yOf(G.pos);
+      g.save(); g.globalAlpha = 0.45; g.fillStyle = '#2456d6'; g.strokeStyle = '#2456d6';
+      for (let p = 12; p <= G.pos; p += 2) line(hx - sp, yOf(p), hx + sp, yOf(p));
+      for (let p = 0; p >= G.pos; p -= 2) line(hx - sp, yOf(p), hx + sp, yOf(p));
+      g.translate(hx, hy); g.rotate(-0.35); g.beginPath(); g.ellipse(0, 0, sp * 0.62, sp * 0.43, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+    // 가사: 글자 수가 음표 수와 같으면 음표 밑에 한 글자씩, 아니면 마디 밑에 그대로
+    const ly = String(it.ly || '').trim();
+    if (R.lyOn && ly) {
+      const yL = staffTop + sp * 4 + sp * 3.2 + sp * 1.9;
+      const syl = /[가-힣]/.test(ly) ? [...ly.replace(/\s+/g, '')] : ly.split(/\s+/);
+      g.fillStyle = INK; g.textBaseline = 'alphabetic';
+      if (info.length && syl.length === info.length) {
+        g.textAlign = 'center';
+        info.forEach((o, i) => {
+          // 음표가 촘촘하면 그 글자만 작게
+          const room = Math.min(i ? o.hx - info[i - 1].hx : sp * 4, i < info.length - 1 ? info[i + 1].hx - o.hx : sp * 4) - sp * 0.15;
+          let sz = sp * 1.45; g.font = `500 ${sz}px ${MTXT}`;
+          while (g.measureText(syl[i]).width > room && sz > sp * 0.85) { sz -= 0.5; g.font = `500 ${sz}px ${MTXT}`; }
+          g.fillText(syl[i], o.hx, yL);
+        });
+        g.textAlign = 'left';
+      } else {
+        let sz = sp * 1.45; g.font = `500 ${sz}px ${MTXT}`;
+        while (g.measureText(ly).width > bw - sp * 1.6 && sz > sp * 0.9) { sz -= 1; g.font = `500 ${sz}px ${MTXT}`; }
+        g.fillText(ly, x0 + sp * 0.8, yL);
+      }
+    }
+  });
+  g.restore();
+  return {staffTop, bars, hs};
+}
+
+// 멜로디 소리: 피아노 반주 위로 또렷한 소리(코드를 칠 때 끊기지 않게 따로 둔다)
+let MVOICES = [];
+function mnote(midi, t, dur, vel) {
+  const f = 440 * Math.pow(2, (midi - 69) / 12), v = vel || 0.2, end = t + Math.max(0.12, dur * 0.93);
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(5200, f * 5);
+  const g = AC.createGain(), o1 = AC.createOscillator(), o2 = AC.createOscillator(), g2 = AC.createGain(), lfo = AC.createOscillator(), lg = AC.createGain();
+  o1.type = 'triangle'; o1.frequency.value = f; o2.type = 'sine'; o2.frequency.value = f * 2; g2.gain.value = 0.16;
+  lfo.frequency.value = 5.2; lg.gain.value = f * 0.004; lfo.connect(lg); lg.connect(o1.frequency);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.02); g.gain.setTargetAtTime(v * 0.72, t + 0.04, 0.3); g.gain.setTargetAtTime(0.0001, end, 0.035);
+  o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(OUT);
+  [o1, o2, lfo].forEach(o => { o.start(t); o.stop(end + 0.3); });
+  MVOICES = MVOICES.filter(x => x.end > AC.currentTime);
+  MVOICES.push({g, o: [o1, o2, lfo], end: end + 0.3});
+}
+function mhush(t) {
+  for (const x of MVOICES) { try { x.g.gain.cancelScheduledValues(t); x.g.gain.setTargetAtTime(0.0001, t, 0.03); x.o.forEach(o => o.stop(t + 0.25)); } catch (e) {} }
+  MVOICES = [];
+}
+// 재생 중 한 박에 들어 있는 멜로디 음을 오디오 시계에 건다
+function schedMel(key, t, spb) {
+  const S = state.seq; if (S.melOn === false || !key) return;
+  const [si, bi, ki] = key.split(':').map(Number), sec = S.sections[si], ms = sec && sec.mel && sec.mel[bi];
+  if (!ms || !ms.length) return;
+  const B = beatT(S.meter), tk = spb / B, K = keyInfo(playerKey(), sec.mk);
+  for (const n of ms) if (Math.floor(n.t / B) === ki) mnote(melMidi(n, K), t + (n.t - ki * B) * tk, n.d * tk);
+}
+
+/* 편집 창 */
+let MEL = null;
+const MEL_DUR = [[16, '\u{1D15D}', '온'], [8, '\u{1D15E}', '2분'], [4, '♩', '4분'], [2, '♪', '8분'], [1, '\u{1D161}', '16분']];
+async function openMel() {
+  try { await Promise.all([document.fonts.load(`40px "Noto Music"`, '\u{1D11E}\u{1D13D}♯♭'), document.fonts.load(`600 20px "IBM Plex Mono"`), document.fonts.load(`500 20px "IBM Plex Sans KR"`)]); } catch (e) {}
+  GLM.clear();
+  MEL = {dur: 4, dot: false, acc: 0, tool: 'note', big: false, penOnly: false, undo: [], redo: [], ghost: null, ptr: null, lay: [], cvs: [], geo: null};
+  const d = $('#melDlg');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  renderMelBar(); renderMel();
+}
+const melDurNow = () => MEL.dot ? MEL.dur * 1.5 : MEL.dur;
+function renderMelBar() {
+  const M = MEL; if (!M) return;
+  const BT = barT(state.seq.meter), sep = () => h('span', {class: 'sep', 'aria-hidden': 'true'});
+  fill($('#melBar'),
+    h('div', {class: 'seg', role: 'group', 'aria-label': '음표 길이'}, MEL_DUR.map(([d, gl, nm]) =>
+      h('button', {type: 'button', 'aria-pressed': String(M.tool === 'note' && M.dur === d), disabled: d > BT, title: nm + '음표',
+        onclick: () => { M.tool = 'note'; M.dur = d; if (d === 1 || d * 1.5 > BT) M.dot = false; renderMelBar(); }}, h('span', {class: 'mg', text: gl}), nm))),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(M.dot), disabled: M.dur === 1 || M.dur * 1.5 > BT, onclick: () => { M.dot = !M.dot; M.tool = 'note'; renderMelBar(); }}, '점음표'),
+    sep(),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(M.acc === 1), title: '다음에 찍는 음을 반음 올려요', onclick: () => { M.acc = M.acc === 1 ? 0 : 1; M.tool = 'note'; renderMelBar(); }}, '♯ 반음 위'),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(M.acc === -1), title: '다음에 찍는 음을 반음 내려요', onclick: () => { M.acc = M.acc === -1 ? 0 : -1; M.tool = 'note'; renderMelBar(); }}, '♭ 반음 아래'),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(M.tool === 'erase'), onclick: () => { M.tool = M.tool === 'erase' ? 'note' : 'erase'; renderMelBar(); }}, '지우개'),
+    sep(),
+    h('button', {type: 'button', class: 'btn sm', disabled: !M.undo.length, onclick: () => melUndo(M.undo, M.redo)}, '되돌리기'),
+    h('button', {type: 'button', class: 'btn sm', disabled: !M.redo.length, onclick: () => melUndo(M.redo, M.undo)}, '다시'),
+    sep(),
+    h('button', {type: 'button', class: 'btn sm', 'aria-pressed': String(M.big), onclick: () => { M.big = !M.big; renderMelBar(); renderMel(); }}, '크게 보기'),
+    h('label', {class: 'tapadd'}, h('input', {type: 'checkbox', checked: M.penOnly, onchange: e => { M.penOnly = e.target.checked; }}), '펜슬로만 찍기'));
+}
+const melSnap = () => JSON.stringify(state.seq.sections.map(s => s.mel || []));
+function melPush() { MEL.undo.push(melSnap()); if (MEL.undo.length > 80) MEL.undo.shift(); MEL.redo = []; }
+function melUndo(from, to) {
+  if (!from.length) return;
+  to.push(melSnap());
+  const a = JSON.parse(from.pop());
+  state.seq.sections.forEach((s, i) => { s.mel = a[i] || []; });
+  save(); renderMelBar(); state.seq.sections.forEach((_, si) => drawMelSec(si));
+}
+function renderMel() {
+  const S = state.seq, stage = $('#melStage');
+  const W = Math.max(260, Math.min(1200, stage.clientWidth - 24) - 24);
+  const sp = MEL.big ? 15 : W < 600 ? 10 : 11.5;
+  MEL.geo = {W, sp, perRow: Math.max(1, Math.min(4, Math.floor((W - sp * 8) / (sp * 17))))};
+  MEL.cvs = []; MEL.lay = [];
+  fill(stage, S.sections.map((sec, si) => {
+    const cv = h('canvas', {class: 'mel-cv', 'aria-label': `${sec.name} 멜로디 오선. 누르면 그 자리에 음표가 들어가요`});
+    MEL.cvs[si] = cv; bindMel(cv, si);
+    return h('div', {class: 'mel-sec'}, h('h4', {text: sec.name}), cv);
+  }));
+  S.sections.forEach((_, si) => drawMelSec(si));
+}
+function drawMelSec(si) {
+  const S = state.seq, sec = S.sections[si], cv = MEL && MEL.cvs[si];
+  if (!cv || !sec) return;
+  const {W, sp, perRow} = MEL.geo, lyOn = (sec.ly || []).some(t => String(t || '').trim()), rh = melRowH(sp, lyOn);
+  const nRows = Math.max(1, Math.ceil(sec.bars.length / perRow)), H = nRows * rh + sp * 0.6;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px'; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  const before = S.sections.slice(0, si).reduce((a, s) => a + s.bars.length, 0), slash = !hasMel(sec), rows = [];
+  for (let r = 0; r < nRows; r++) {
+    const items = sec.bars.slice(r * perRow, r * perRow + perRow).map((bar, k) => { const bi = r * perRow + k; return {bar, mel: (sec.mel || [])[bi] || [], ly: (sec.ly || [])[bi] || '', no: before + bi + 1, bi}; });
+    const y = r * rh;
+    const L = drawMelRow(g, {x: 0, y, w: W, sp, pk: playerKey(), mk: sec.mk, meter: S.meter, perRow, items, time: si === 0 && r === 0, end: r === nRows - 1, edit: true, lyOn, slash,
+      ghost: MEL.ghost && MEL.ghost.si === si ? MEL.ghost : null});
+    rows.push({y, h: rh, ...L});
+  }
+  MEL.lay[si] = rows;
+}
+function melTarget(si, x, y) {
+  const rows = MEL.lay[si]; if (!rows) return null;
+  const row = rows.find(r => y >= r.y && y < r.y + r.h); if (!row) return null;
+  const b = row.bars.find(q => x >= q.x0 && x < q.x1); if (!b) return null;
+  const S = state.seq, BT = barT(S.meter), comp = beatT(S.meter) === 6, d = melDurNow();
+  const grid = comp ? (d % 6 === 0 ? 6 : d % 2 === 0 ? 2 : 1) : (d % 4 === 0 ? 4 : d % 2 === 0 ? 2 : 1);
+  const rel = (x - b.nx0) / (b.nx1 - b.nx0) * BT;
+  let t = Math.floor(Math.max(0, rel) / grid) * grid;
+  if (MEL.tool === 'note') t = Math.max(0, Math.min(t, BT - d));
+  const pos = Math.max(-4, Math.min(16, Math.round(10 - (y - row.staffTop) / row.hs)));
+  if (MEL.tool === 'erase') {
+    const ms = ((S.sections[si].mel || [])[b.bi] || []), hit = ms.find(n => rel >= n.t - 0.5 && rel < n.t + n.d);
+    return hit ? {si, bi: b.bi, t: hit.t, d: hit.d, pos, erase: true, note: hit} : {si, bi: b.bi, t: Math.min(BT - 1, Math.floor(rel)), d: 1, pos, erase: true, note: null};
+  }
+  return {si, bi: b.bi, t, d, pos};
+}
+function setMelGhost(G) {
+  const old = MEL.ghost;
+  if (old && G && old.si === G.si && old.bi === G.bi && old.t === G.t && old.pos === G.pos && old.d === G.d && old.erase === G.erase) return;
+  MEL.ghost = G;
+  if (old) drawMelSec(old.si);
+  if (G && (!old || old.si !== G.si)) drawMelSec(G.si);
+}
+function melPlace(G) {
+  const S = state.seq, sec = S.sections[G.si];
+  if (!Array.isArray(sec.mel)) sec.mel = [];
+  if (!sec.mk || !hasMel(sec)) sec.mk = keyName(playerKey());
+  const K = keyInfo(playerKey(), sec.mk);
+  for (let i = 0; i < sec.bars.length; i++) if (!Array.isArray(sec.mel[i])) sec.mel[i] = [];
+  const arr = sec.mel[G.bi];
+  if (G.erase) {
+    if (!G.note) return;
+    melPush(); arr.splice(arr.indexOf(G.note), 1);
+  } else {
+    const p = G.pos - K.tpos, same = arr.findIndex(n => n.t === G.t && n.p === p && n.d === G.d);
+    melPush();
+    if (same >= 0 && !MEL.acc) arr.splice(same, 1);
+    else {
+      for (let i = arr.length - 1; i >= 0; i--) if (arr[i].t < G.t + G.d && arr[i].t + arr[i].d > G.t) arr.splice(i, 1);
+      const n = {t: G.t, d: G.d, p, a: MEL.acc || 0};
+      arr.push(n); arr.sort((a, b) => a.t - b.t);
+      if (ac()) mnote(melMidi(n, K), AC.currentTime + 0.01, Math.min(0.7, G.d * 60 / S.bpm / beatT(S.meter)) + 0.15);
+      if (MEL.acc) { MEL.acc = 0; renderMelBar(); }
+    }
+  }
+  save(); renderMelBar(); drawMelSec(G.si);
+}
+function bindMel(cv, si) {
+  const at = e => { const r = cv.getBoundingClientRect(); return melTarget(si, e.clientX - r.left, e.clientY - r.top); };
+  cv.addEventListener('pointerdown', e => {
+    if (!MEL || e.button > 0) return;
+    if (e.pointerType === 'pen' && !MEL.penOnly) { MEL.penOnly = true; renderMelBar(); toast('펜슬로 찍고, 손가락으로는 화면을 움직여요'); }
+    const st = $('#melStage');
+    MEL.ptr = {id: e.pointerId, type: e.pointerType, x0: e.clientX, y0: e.clientY, sl: st.scrollLeft, stp: st.scrollTop, pan: e.pointerType === 'touch' && MEL.penOnly};
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+    if (!MEL.ptr.pan) setMelGhost(at(e));
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!MEL) return;
+    const P = MEL.ptr;
+    if (P && P.id === e.pointerId) {
+      if (P.type === 'touch' && !P.pan && Math.hypot(e.clientX - P.x0, e.clientY - P.y0) > 10) { P.pan = true; setMelGhost(null); }
+      if (P.pan) { const st = $('#melStage'); st.scrollTop = P.stp - (e.clientY - P.y0); st.scrollLeft = P.sl - (e.clientX - P.x0); return; }
+      setMelGhost(at(e));
+    } else if (!P && e.pointerType !== 'touch') setMelGhost(at(e));
+  });
+  cv.addEventListener('pointerup', e => {
+    const P = MEL && MEL.ptr; if (!P || P.id !== e.pointerId) return;
+    MEL.ptr = null;
+    if (P.pan) return;
+    const G = at(e); setMelGhost(null);
+    if (G) melPlace(G);
+  });
+  cv.addEventListener('pointercancel', () => { if (MEL) { MEL.ptr = null; setMelGhost(null); } });
+  cv.addEventListener('pointerleave', e => { if (MEL && !MEL.ptr && e.pointerType !== 'touch') setMelGhost(null); });
+}
+
+/* 코드 악보(A4)에 멜로디가 있으면 오선 리드시트로 */
+function leadPages(p) {
+  const pk = parseKey(p.key) || playerKey(), meter = p.meter in METERS ? p.meter : '4/4';
+  const {w: W, h: H, m} = CHART, sp = 13, pages = [];
+  // 16분음표가 있으면 한 줄에 3마디(촘촘해지지 않게)
+  const perRow = (p.sections || []).some(sc => (sc.mel || []).some(b => (b || []).some(n => n.d === 1))) ? 3 : 4;
+  let g = null, y = 0;
+  const newPage = () => {
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    pages.push(cv); y = m;
+    g.fillStyle = '#14182b'; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+    if (pages.length === 1) {
+      let sz = 50; g.font = `700 ${sz}px ${MTXT}`;
+      while (g.measureText(p.name || '악보').width > W - 2 * m - 380 && sz > 30) { sz--; g.font = `700 ${sz}px ${MTXT}`; }
+      g.fillText(p.name || '악보', m, y + 46);
+      g.font = `500 26px ${MTXT}`; g.textAlign = 'right'; g.fillStyle = '#5b6176';
+      g.fillText(`Key ${keyName(pk)} · ${meter} · ♩${meter.endsWith('/8') ? '.' : ''}=${p.bpm || 72}`, W - m, y + 44);
+      g.fillStyle = '#14182b'; g.fillRect(m, y + 66, W - 2 * m, 3); g.textAlign = 'left';
+      y += 96;
+    } else {
+      g.font = `500 22px ${MTXT}`; g.fillStyle = '#5b6176';
+      g.fillText(`${p.name || '악보'} (${pages.length})`, m, y + 22);
+      y += 44;
+    }
+  };
+  newPage();
+  let before = 0;
+  (p.sections || []).forEach((sc, si) => {
+    const bars = sc.bars || [], lyOn = (sc.ly || []).some(t => String(t || '').trim()), rh = melRowH(sp, lyOn), rows = Math.max(1, Math.ceil(bars.length / perRow));
+    if (y + 44 + rh > H - m) newPage();
+    g.font = `600 26px ${MTXT}`; g.fillStyle = '#24368f'; g.strokeStyle = '#24368f'; g.lineWidth = 2; g.textBaseline = 'alphabetic';
+    const lw = g.measureText(sc.name || '').width + 28;
+    g.strokeRect(m, y, lw, 38); g.fillText(sc.name || '', m + 14, y + 28);
+    y += 40;
+    for (let r = 0; r < rows; r++) {
+      if (y + rh > H - m) newPage();
+      const items = bars.slice(r * perRow, r * perRow + perRow).map((bar, k) => { const bi = r * perRow + k; return {bar, mel: (sc.mel || [])[bi] || [], ly: (sc.ly || [])[bi] || '', no: before + bi + 1, bi}; });
+      drawMelRow(g, {x: m, y, w: W - 2 * m, sp, pk, mk: sc.mk, meter, perRow, items, time: si === 0 && r === 0, end: r === rows - 1, edit: false, lyOn, slash: !hasMel(sc)});
+      y += rh;
+    }
+    before += bars.length;
+    y += sp;
+  });
+  pages.forEach((cv, i) => {
+    const gg = cv.getContext('2d');
+    gg.font = `400 18px ${MTXT}`; gg.fillStyle = '#9ca2bc'; gg.textAlign = 'right';
+    gg.fillText(pages.length > 1 ? `${i + 1} / ${pages.length}` : '', W - m, H - 36);
+  });
+  return pages;
 }
 
 /* ---------- 진행 보관함: 마디 진행을 이름 붙여 저장·불러오기 ---------- */
@@ -2968,13 +3465,14 @@ function chartPages(p) {
   });
   return pages;
 }
-async function openChart(p) {
-  const src = p || progSnapshot(defaultProgName());
-  try { await document.fonts.load(`600 30px "IBM Plex Mono"`); await document.fonts.load(`500 26px "IBM Plex Sans KR"`); } catch (e) {}
+async function openChart(p, mode) {
+  const src = p || progSnapshot(defaultProgName()), mel = (src.sections || []).some(hasMel);
+  try { await Promise.all([document.fonts.load(`600 30px "IBM Plex Mono"`), document.fonts.load(`500 26px "IBM Plex Sans KR"`), mel ? document.fonts.load(`40px "Noto Music"`, '\u{1D11E}\u{1D13D}♯♭') : null]); } catch (e) {}
+  GLM.clear();
   if (CH) CH.urls.forEach(u => URL.revokeObjectURL(u));
-  const pages = chartPages(src);
+  const md = mel ? (mode || 'lead') : 'chords', pages = md === 'lead' ? leadPages(src) : chartPages(src);
   const blobs = await Promise.all(pages.map(cv => new Promise(r => cv.toBlob(r, 'image/png'))));
-  CH = {p: src, pages, blobs, urls: blobs.map(b => URL.createObjectURL(b)), msg: ''};
+  CH = {p: src, mel, mode: md, pages, blobs, urls: blobs.map(b => URL.createObjectURL(b)), msg: ''};
   const d = $('#chartDlg');
   if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
   renderChart();
@@ -2984,6 +3482,8 @@ function renderChart() {
   const base = (CH.p.name || '코드 악보').replace(/[\\/:*?"<>|]/g, ' ').trim();
   fill($('#chartBody'),
     h('p', {class: 'hint', text: `${CH.p.name} · Key ${CH.p.key} · ${CH.p.meter} · A4 세로 ${CH.pages.length}장 · 마디 아래 가사 칸에 적은 가사가 함께 들어가요`}),
+    CH.mel ? h('div', {class: 'seg', role: 'group', 'aria-label': '악보 모양'}, [['lead', '멜로디 악보(오선)'], ['chords', '코드만']].map(([v, l]) =>
+      h('button', {type: 'button', 'aria-pressed': String(CH.mode === v), onclick: () => { if (CH.mode !== v) openChart(CH.p, v); }}, l))) : null,
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn primary', type: 'button', onclick: async () => {
         const dl = await getDownloads(); if (!dl) { CH.msg = dlMsg(null); renderChart(); return; }
@@ -2997,7 +3497,7 @@ function renderChart() {
       }}, 'PDF로 저장'),
       h('button', {class: 'btn', type: 'button', onclick: async () => {
         const dl = await getDownloads(); if (!dl) { CH.msg = dlMsg(null); renderChart(); return; }
-        try { for (let i = 0; i < CH.blobs.length; i++) await dl.save({filename: `${base} 코드 악보${CH.blobs.length > 1 ? ' ' + (i + 1) : ''}.png`, data: CH.blobs[i]}); CH.msg = '이미지를 저장했어요.'; }
+        try { for (let i = 0; i < CH.blobs.length; i++) { if (i) await wait(700); await saveOne(dl, {filename: `${base} 코드 악보${CH.blobs.length > 1 ? ' ' + (i + 1) : ''}.png`, data: CH.blobs[i]}); } CH.msg = '이미지를 저장했어요.'; }
         catch (e) { CH.msg = dlMsg(e); }
         renderChart();
       }}, '이미지로 저장')),
@@ -3346,6 +3846,15 @@ window.addEventListener('resize', () => { if (INK) layoutInk(); });
 $('#progSave').addEventListener('click', () => { openProgs(); });
 $('#progOpen').addEventListener('click', openProgs);
 $('#chartOpen').addEventListener('click', () => openChart());
+$('#melOpen').addEventListener('click', openMel);
+$('#melPlay').addEventListener('click', () => seqStart(null));
+$('#melStop').addEventListener('click', stopSound);
+// 창을 닫을 때 정리(버튼·Esc 어느 쪽이든 한 번만)
+const endMel = () => { if (!MEL) return; stopSound(); MEL = null; fill($('#melStage')); commit(['seq']); };
+$('#melDone').addEventListener('click', () => { endMel(); $('#melDlg').close(); });
+$('#melDlg').addEventListener('close', endMel);
+window.addEventListener('resize', () => { if (MEL && $('#melDlg').open) renderMel(); });
+$('#seqMel').addEventListener('change', e => { state.seq.melOn = e.target.checked; save(); });
 for (const id of ['progDlg', 'chartDlg']) $('#' + id).addEventListener('click', e => { const d = $('#' + id); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
 renderProgNow();
 $('#pptDlg').addEventListener('click', e => { const d = $('#pptDlg'); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
@@ -3555,7 +4064,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
 }
-if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt};
+if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt, mel: () => MEL, openChart, chartState: () => CH};
 // 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시
 document.querySelectorAll('#tray [data-go]').forEach(b => b.addEventListener('click', () => {
   const el = document.getElementById(b.dataset.go);
