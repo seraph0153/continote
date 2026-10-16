@@ -1,5 +1,5 @@
 // 콘티노트 서비스워커: 앱을 오프라인에서도 열고, 이 기기에 저장한 악보 그림을 score/<해시> 주소로 내준다
-const VERSION = 'continote-v7';
+const VERSION = 'continote-v8';
 const RUNTIME = 'continote-runtime';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 

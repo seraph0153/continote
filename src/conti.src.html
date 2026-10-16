@@ -1490,8 +1490,10 @@ function openPreview(song, key) {
 function revokePv() { PV_URLS.forEach(u => URL.revokeObjectURL(u)); PV_URLS = []; }
 function clearRot(path) { if (PV && PV.rotUrl[path]) URL.revokeObjectURL(PV.rotUrl[path]); if (PV) { delete PV.rot[path]; delete PV.rotBlob[path]; delete PV.rotUrl[path]; } }
 const imgType = path => /\.png$/i.test(path) ? 'image/png' : 'image/jpeg';
+// 그림 읽기: decode()는 화면이 가려져 있으면 끝나지 않는 일이 있어 load로 기다린다
+const loadImg = src => new Promise((ok, no) => { const img = new Image(); img.onload = () => ok(img); img.onerror = () => no(new Error('image')); img.src = src; });
 async function rotatedBlob(src, deg, type) {
-  const img = new Image(); img.src = src; await img.decode();
+  const img = await loadImg(src);
   const w = img.naturalWidth, hgt = img.naturalHeight, swap = deg % 180 !== 0;
   const cv = document.createElement('canvas'); cv.width = swap ? hgt : w; cv.height = swap ? w : hgt;
   const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height);
@@ -2600,8 +2602,7 @@ async function openInk(o) {
   else {
     const src = await ensureSrc(o.path);
     if (!src) { toast('이 악보를 불러오지 못했어요'); return; }
-    bg = new Image(); bg.src = src;
-    try { await bg.decode(); } catch (e) { toast('이 악보를 불러오지 못했어요'); return; }
+    try { bg = await loadImg(src); } catch (e) { toast('이 악보를 불러오지 못했어요'); return; }
     w = bg.naturalWidth; hgt = bg.naturalHeight;
   }
   INK = {song, path: o.path || null, key: o.key || (song.keys && song.keys[0]) || '', blank: !!o.blank, bg, w, h: hgt,
@@ -2615,7 +2616,7 @@ async function openInk(o) {
   const d = $('#inkDlg');
   if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
   renderInkBar();
-  requestAnimationFrame(layoutInk);
+  layoutInk(); requestAnimationFrame(layoutInk);
 }
 function layoutInk() {
   if (!INK) return;
@@ -2966,7 +2967,7 @@ async function buildPages() {
       const src = path ? srcFor(path) : null;
       if (src) {
         try {
-          const img = new Image(); img.src = src; await img.decode();
+          const img = await loadImg(src);
           const sc = Math.min(halfW / img.naturalWidth, ih / img.naturalHeight), dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
           g.drawImage(img, rx + (halfW - dw) / 2, iy, dw, dh); drawn = true;
           const mk = await loadMarks(path);
@@ -2995,7 +2996,7 @@ function revokeEx() { if (EX) { EX.urls.forEach(u => URL.revokeObjectURL(u)); EX
 async function openExport() {
   if (!state.slots.some(Boolean)) { toast('콘티에 곡을 먼저 넣어 주세요'); return; }
   EX = EX || {pick: {}, urls: [], pages: [], blobs: [], msg: '', busy: true};
-  EX.busy = true; EX.msg = '';
+  EX.busy = true; EX.msg = ''; EX.next = 0;
   const d = $('#ex');
   if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
   renderExport();
@@ -3006,13 +3007,39 @@ async function openExport() {
   EX.busy = false;
   renderExport();
 }
+const wait = ms => new Promise(r => setTimeout(r, ms));
+// 저장 확인 창은 한 번에 하나뿐이라, 바로 이어 부르면 "이미 떠 있음"으로 막힌다 → 잠깐 쉬었다 다시 부른다
+async function saveOne(dl, req0) {
+  for (let t = 0; ; t++) {
+    try { return await dl.save(req0); }
+    catch (e) { if (e && e.code === 'rate_limited' && t < 4) { await wait(800 + t * 700); continue; } throw e; }
+  }
+}
 async function savePng(i) {
   const dl = await getDownloads();
   if (!dl) { EX.msg = dlMsg(null); renderExport(); return false; }
-  try { await dl.save({filename: `${exName()} ${pad(i + 1)}.png`, data: EX.blobs[i]}); EX.msg = `${i + 1}쪽 이미지를 저장했어요.`; recordAfterExport(); renderExport(); return true; }
+  try { await saveOne(dl, {filename: `${exName()} ${pad(i + 1)}.png`, data: EX.blobs[i]}); EX.msg = `${i + 1}쪽 이미지를 저장했어요.`; recordAfterExport(); renderExport(); return true; }
   catch (e) { EX.msg = dlMsg(e); renderExport(); return false; }
 }
-async function saveAllPng() { for (let i = 0; i < EX.blobs.length; i++) if (!(await savePng(i))) return; EX.msg = `이미지 ${EX.blobs.length}장을 모두 저장했어요.`; renderExport(); }
+// 여러 장: 한 장씩 차례로 저장하고, 중간에 막히면 남은 장부터 이어서 저장할 수 있게 한다
+async function saveAllPng() {
+  const dl = await getDownloads();
+  if (!dl) { EX.msg = dlMsg(null); renderExport(); return; }
+  const n = EX.blobs.length, from = EX.next > 0 && EX.next < n ? EX.next : 0;
+  EX.saving = true;
+  for (let i = from; i < n; i++) {
+    if (i > from) await wait(700);
+    EX.msg = n > 1 ? `${i + 1}쪽 / ${n}쪽 저장 중… 확인 창이 뜨면 저장을 눌러 주세요.` : ''; renderExport();
+    try { await saveOne(dl, {filename: `${exName()} ${pad(i + 1)}.png`, data: EX.blobs[i]}); EX.next = i + 1; }
+    catch (e) {
+      EX.next = i; EX.saving = false;
+      EX.msg = (i > 0 ? `${i}쪽까지 저장했어요. ` : '') + dlMsg(e) + (i > 0 ? ` 남은 ${n - i}장은 "이어서 저장"을 눌러 주세요.` : '');
+      renderExport(); return;
+    }
+  }
+  EX.next = 0; EX.saving = false; recordAfterExport();
+  EX.msg = n > 1 ? `이미지 ${n}장을 모두 저장했어요.` : '이미지를 저장했어요.'; renderExport();
+}
 function loadScript(src) {
   return new Promise((ok, no) => { const el = document.createElement('script'); el.src = src; el.onload = ok; el.onerror = no; document.head.append(el); });
 }
@@ -3052,7 +3079,8 @@ function renderExport() {
       h('input', {class: 'field', id: 'exNameIn', value: EX.name || fileBase(), autocomplete: 'off', oninput: e => { EX.name = e.target.value; }})),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn primary', type: 'button', disabled: EX.busy, onclick: savePdf}, 'PDF 한 파일로 저장'),
-      h('button', {class: 'btn', type: 'button', disabled: EX.busy, onclick: saveAllPng}, n > 1 ? `이미지 ${n}장 모두 저장` : '이미지로 저장')),
+      h('button', {class: 'btn', type: 'button', disabled: EX.busy || EX.saving, onclick: saveAllPng},
+        EX.next > 0 && EX.next < n ? `남은 ${n - EX.next}장 이어서 저장` : n > 1 ? `이미지 ${n}장 모두 저장` : '이미지로 저장')),
     EX.msg ? h('p', {class: 'hint', role: 'status', text: EX.msg}) : null,
     missing ? h('div', {class: 'confirm', role: 'status'},
       h('span', {text: `악보 ${missing}곡이 아직 앱에 없어요. 지금 앱에 올라간 악보는 ${uploadedCount().toLocaleString()} / ${KNOWN.size.toLocaleString()}장이에요. 맥에서 "찬양 목록" 폴더를 연결하면 바로 채워지고, 이어서 "앱에 올리기"를 끝까지 하면 폰에서도 다 들어가요.`}),

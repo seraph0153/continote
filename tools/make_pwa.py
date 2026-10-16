@@ -614,23 +614,35 @@ async function saveFiles(list) {
       const w = await hnd.createWritable(); await w.write(f); await w.close();
       return {status: 'saved'};
     }
+    // 여러 장: 폴더를 한 번 골라 모두 그 안에 저장(크롬·엣지)
+    if (files.length > 1 && window.showDirectoryPicker) {
+      const dir = await window.showDirectoryPicker({id: 'continote', mode: 'readwrite', startIn: 'downloads'});
+      for (const f of files) { const fh = await dir.getFileHandle(f.name, {create: true}); const w = await fh.createWritable(); await w.write(f); await w.close(); }
+      return {status: 'saved', where: dir.name};
+    }
   } catch (e) {
     if (e && e.name === 'AbortError') throw {code: 'declined'};
   }
-  for (const f of files) {
-    const url = URL.createObjectURL(f), a = document.createElement('a');
+  // 그 밖(사파리 등): 다운로드 폴더로. 한꺼번에 내려받으면 둘째 장부터 막히는 브라우저가 있어 사이를 둔다
+  for (let i = 0; i < files.length; i++) {
+    if (i) await new Promise(r => setTimeout(r, 700));
+    const f = files[i], url = URL.createObjectURL(f), a = document.createElement('a');
     a.href = url; a.download = f.name; document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
   return {status: 'saved'};
 }
 const getDownloads = async () => { DL = DL || {save: req0 => saveFiles([req0])}; return DL; };''')
-rep("async function saveAllPng() { for (let i = 0; i < EX.blobs.length; i++) if (!(await savePng(i))) return; EX.msg = `이미지 ${EX.blobs.length}장을 모두 저장했어요.`; renderExport(); }",
-    """async function saveAllPng() {
-  try { await saveFiles(EX.blobs.map((b, i) => ({filename: `${exName()} ${pad(i + 1)}.png`, data: b}))); EX.msg = `이미지 ${EX.blobs.length}장을 저장했어요.`; recordAfterExport(); }
-  catch (e) { EX.msg = dlMsg(e); }
-  renderExport();
-}""")
+rep_between("// 여러 장: 한 장씩 차례로 저장하고", "function loadScript(src) {", """// 여러 장: 폰은 공유 창 하나로, 컴퓨터는 폴더를 한 번 골라 모두 저장
+async function saveAllPng() {
+  EX.saving = true; renderExport();
+  try {
+    const r = await saveFiles(EX.blobs.map((b, i) => ({filename: `${exName()} ${pad(i + 1)}.png`, data: b})));
+    EX.msg = r && r.where ? `이미지 ${EX.blobs.length}장을 "${r.where}" 폴더에 저장했어요.` : `이미지 ${EX.blobs.length}장을 저장했어요.`; recordAfterExport();
+  } catch (e) { EX.msg = dlMsg(e); }
+  EX.saving = false; EX.next = 0; renderExport();
+}
+""")
 rep("      const src = path ? srcFor(path) : null;", "      const src = path ? await ensureSrc(path) : null;")
 rep("""      h('span', {text: `악보 ${missing}곡이 아직 앱에 없어요. 지금 앱에 올라간 악보는 ${uploadedCount().toLocaleString()} / ${KNOWN.size.toLocaleString()}장이에요. 맥에서 "찬양 목록" 폴더를 연결하면 바로 채워지고, 이어서 "앱에 올리기"를 끝까지 하면 폰에서도 다 들어가요.`}),
       h('button', {class: 'btn sm', type: 'button', onclick: () => $('#folderIn').click()}, '"찬양 목록" 폴더 연결'),
