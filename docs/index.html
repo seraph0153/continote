@@ -382,6 +382,18 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
 .stat-row:first-child{border-top:0}
 .stat-row .rank{font-family:var(--f-mono);color:var(--muted);font-size:12px}
 .stat-row .cnt{font-family:var(--f-mono);font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
+.ppt-opts{display:flex;flex-direction:column;gap:10px}
+.ppt-opt{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.ppt-opt>.cl{margin:0;min-width:5.5em}
+.ppt-opt .seg button{padding:5px 10px;font-size:13px}
+.ppt-opt textarea{flex:1 1 240px;min-height:56px}
+.ppt-songs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ppt-song{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--paper)}
+.ppt-song-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.ppt-use{font-size:13px;color:var(--navy);font-weight:600}
+.lyr-edit{display:flex;flex-direction:column;gap:8px}
+.lyr-edit textarea{min-height:170px}
+.bg-thumb{width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
 .svc-list{display:flex;flex-direction:column;gap:8px}
 .svc-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:6px 8px;align-items:center}
 .svc-row select{border:1px solid var(--line-strong);background:var(--paper);border-radius:6px;padding:6px;font-size:14px}
@@ -562,6 +574,7 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
             <ol class="slots" id="slots"></ol>
             <div class="paper-actions">
               <button class="btn primary" id="exportBtn" type="button">콘티 파일 만들기</button>
+              <button class="btn" id="pptBtn" type="button">예배 PPT 만들기</button>
               <button class="btn" id="saveHist" type="button">기록에 저장</button>
               <button class="btn" id="copy">단톡방용 텍스트 복사</button>
               <button class="btn" id="addSlot">자리 추가</button>
@@ -598,6 +611,13 @@ button.tag.set{color:var(--ink);border-color:var(--ink)}
   <div class="dlg-head"><h3 id="histTitle">콘티 기록</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
   <div class="dlg-body" id="histBody"></div>
 </dialog>
+<dialog class="dlg" id="pptDlg" aria-labelledby="pptTitle">
+  <div class="dlg-head"><h3 id="pptTitle">예배 PPT</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
+  <div class="dlg-body" id="pptBody"></div>
+</dialog>
+<input type="file" id="pptFilesIn" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple hidden>
+<input type="file" id="pptFolderIn" webkitdirectory multiple hidden>
+<input type="file" id="bgIn" accept="image/*" hidden>
 <dialog class="dlg" id="ex" aria-labelledby="exTitle">
   <div class="dlg-head"><h3 id="exTitle">콘티 파일</h3><button class="icon" type="button" data-close aria-label="닫기">✕</button></div>
   <div class="dlg-body" id="exBody"></div>
@@ -870,6 +890,7 @@ function fresh(svc = firstSvc()) {
           slots: Array(SVC[svc].count).fill(null), filters: {0: true, 1: true, 2: true, 11: false, 10: false},
           tab: 'rec', med: '', example: false, prev: null, flow: '',
           progText: '1 5 6 4', speed: 'mid', loop: false, tapAdd: false, seasonOv: {}, seasonOnly: false, pad: {row: 'tri', open: true}, seq: freshSeq(),
+          pptOpt: {mode: 'auto', ratio: '4:3', bg: 'navy', cover: true, coverText: '지금은 묵상으로\n예배를 준비하는 시간입니다', titleSlide: false, lines: 2, size: 'mid'},
           baseKey: '', baseKeyMinor: false};
 }
 function load() {
@@ -1265,7 +1286,7 @@ const histSort = (a, b) => String(b.date).localeCompare(String(a.date)) || Strin
   try {
     EXTRA = (await dbGet('docs', 'songs')) || {};
     rebuildSongs();
-    (await dbKeys('files')).forEach(k => INDEX.set(k, true));
+    (await dbKeys('files')).forEach(k => { if (!String(k).includes(':')) INDEX.set(k, true); });
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     rebuildUsage();
   } catch (e) { toast('이 브라우저에서는 저장 공간을 쓸 수 없어요. 개인 정보 보호 모드인지 확인해 주세요'); }
@@ -2070,11 +2091,419 @@ function renderHist() {
   fill(body, tabs, search, content);
 }
 
+/* ---------- PPT 저장소: 가사·곡별 PPT·배경 그림을 이 기기(IndexedDB)에 저장 ---------- */
+const LYR = new Map(), SONG_PPT = new Map();
+const PPT_PERSIST = true;
+const PPT_NOTE = '';
+let LYR_ALL = null;
+async function lyrAll() { if (!LYR_ALL) LYR_ALL = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; return LYR_ALL; }
+async function loadLyrics(song) { return String((await lyrAll())[song.n] || ''); }
+async function saveLyrics(song, text) {
+  const a = await lyrAll();
+  if (text) a[song.n] = text; else delete a[song.n];
+  try { await dbPut('docs', 'lyrics', a); return true; } catch (e) { return false; }
+}
+async function getSongPpt(song) {
+  if (SONG_PPT.has(song.n)) return SONG_PPT.get(song.n);
+  const v = await dbGet('files', 'ppt:' + fnv(song.n)).catch(() => null);
+  const b = v && v.blob ? v.blob : null;
+  SONG_PPT.set(song.n, b);
+  return b;
+}
+async function setSongPpt(song, file) {
+  SONG_PPT.set(song.n, file);
+  await dbPut('files', 'ppt:' + fnv(song.n), {blob: file, type: file.type || MIME.pptx, path: 'ppt:' + song.n});
+}
+async function clearSongPpt(song) { SONG_PPT.set(song.n, null); await dbDel('files', 'ppt:' + fnv(song.n)).catch(() => {}); }
+let PPT_BG;
+async function loadPptBg() {
+  if (PPT_BG !== undefined) return PPT_BG;
+  const v = await dbGet('files', 'bg:ppt').catch(() => null);
+  PPT_BG = v && v.blob ? await blobToDataUrl(v.blob) : null;
+  return PPT_BG;
+}
+async function savePptBg(file) {
+  const {blob} = await prepare(file, file.name);
+  await dbPut('files', 'bg:ppt', {blob, type: blob.type, path: 'bg:ppt'});
+  PPT_BG = await blobToDataUrl(blob);
+}
+
+/* ---------- 예배 PPT 만들기: 곡별 PPT · 가사 · 악보 그림을 콘티 순서대로 한 파일로 ---------- */
+// ---------- PPTX 합치기: 다른 PPT의 슬라이드를 (그 배경·레이아웃·마스터·테마·그림과 함께) 뒤에 붙인다 ----------
+const PX = {
+  rel: 'http://schemas.openxmlformats.org/package/2006/relationships',
+  ct: 'http://schemas.openxmlformats.org/package/2006/content-types',
+  p: 'http://schemas.openxmlformats.org/presentationml/2006/main',
+  r: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+};
+const PX_REL = {
+  slide: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide',
+  master: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster'
+};
+const pxDir = p => p.slice(0, p.lastIndexOf('/'));
+const pxBase = p => p.slice(p.lastIndexOf('/') + 1);
+const pxRels = p => pxDir(p) + '/_rels/' + pxBase(p) + '.rels';
+function pxResolve(fromPart, target) {
+  if (target.startsWith('/')) return target.slice(1);
+  const out = pxDir(fromPart).split('/');
+  for (const seg of target.split('/')) { if (seg === '..') out.pop(); else if (seg && seg !== '.') out.push(seg); }
+  return out.join('/');
+}
+function pxRelTarget(fromPart, toPart) {
+  const a = pxDir(fromPart).split('/'), b = toPart.split('/');
+  let i = 0;
+  while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return '../'.repeat(a.length - i) + b.slice(i).join('/');
+}
+const pxParse = s => new DOMParser().parseFromString(s, 'application/xml');
+const pxSer = d => new XMLSerializer().serializeToString(d);
+const pxEls = (d, ns, name) => Array.from(d.getElementsByTagNameNS(ns, name));
+
+// dst: 열어 둔 JSZip(결과 PPT), srcData: 붙일 PPT 파일(Blob/ArrayBuffer). 결과: {slides, sizeMismatch}
+async function mergePptx(dst, srcData, JSZipLib) {
+  const src = await JSZipLib.loadAsync(srcData);
+  const presPath = 'ppt/presentation.xml', presRelsPath = 'ppt/_rels/presentation.xml.rels';
+  const ctDoc = pxParse(await dst.file('[Content_Types].xml').async('string'));
+  const srcCt = pxParse(await src.file('[Content_Types].xml').async('string'));
+  const pres = pxParse(await dst.file(presPath).async('string'));
+  const presRels = pxParse(await dst.file(presRelsPath).async('string'));
+  const memo = new Map(), newMasters = [];
+
+  const ctOf = part => {
+    for (const o of pxEls(srcCt, PX.ct, 'Override')) if (o.getAttribute('PartName') === '/' + part) return {override: o.getAttribute('ContentType')};
+    const ext = part.split('.').pop().toLowerCase();
+    for (const d of pxEls(srcCt, PX.ct, 'Default')) if (String(d.getAttribute('Extension')).toLowerCase() === ext) return {def: d.getAttribute('ContentType')};
+    return null;
+  };
+  const addCt = (dstPart, ct) => {
+    if (!ct) return;
+    const root = ctDoc.documentElement;
+    if (ct.override) {
+      const o = ctDoc.createElementNS(PX.ct, 'Override');
+      o.setAttribute('PartName', '/' + dstPart); o.setAttribute('ContentType', ct.override);
+      root.appendChild(o);
+      return;
+    }
+    const ext = dstPart.split('.').pop().toLowerCase();
+    if (pxEls(ctDoc, PX.ct, 'Default').some(d => String(d.getAttribute('Extension')).toLowerCase() === ext)) return;
+    const d = ctDoc.createElementNS(PX.ct, 'Default');
+    d.setAttribute('Extension', ext); d.setAttribute('ContentType', ct.def);
+    root.insertBefore(d, root.firstChild);
+  };
+  const freeName = (dir, stem, ext) => { let n = 1; while (dst.file(`${dir}/${stem}${n}.${ext}`)) n++; return `${dir}/${stem}${n}.${ext}`; };
+
+  async function copyPart(sp) {
+    if (memo.has(sp)) return memo.get(sp);
+    const f = src.file(sp);
+    if (!f) return null;
+    const m = /^(.*?)(\d*)\.(\w+)$/.exec(pxBase(sp)) || [null, pxBase(sp), '', 'bin'];
+    const dp = freeName(pxDir(sp), m[1] || 'part', m[3]);
+    memo.set(sp, dp);
+    dst.file(dp, '');  // 이름 자리 잡기(재귀 중 같은 이름을 쓰지 않게)
+    const relsF = src.file(pxRels(sp));
+    if (relsF) {
+      const rd = pxParse(await relsF.async('string'));
+      for (const r of pxEls(rd, PX.rel, 'Relationship')) {
+        if (r.getAttribute('TargetMode') === 'External') continue;
+        const type = r.getAttribute('Type') || '';
+        // 노트·댓글은 옮기지 않는다(슬라이드 본문에서 가리키지 않음)
+        if (/\/(notesSlide|notesMaster|handoutMaster|comments|commentAuthors|authors)$/.test(type)) { r.parentNode.removeChild(r); continue; }
+        // 다른 슬라이드로 가는 링크는 이 슬라이드 자신으로 돌린다(끊긴 링크로 파일이 깨지지 않게)
+        if (/\/slide$/.test(type)) { r.setAttribute('Target', pxBase(dp)); continue; }
+        const dt = await copyPart(pxResolve(sp, r.getAttribute('Target')));
+        if (!dt) { r.parentNode.removeChild(r); continue; }
+        r.setAttribute('Target', pxRelTarget(dp, dt));
+      }
+      dst.file(pxRels(dp), pxSer(rd));
+    }
+    if (/^ppt\/slideMasters\/[^/]+\.xml$/.test(sp)) newMasters.push(dp);
+    dst.file(dp, await f.async('uint8array'));
+    addCt(dp, ctOf(sp));
+    return dp;
+  }
+
+  // 붙일 PPT의 슬라이드를 순서대로 복사
+  const sPres = pxParse(await src.file(presPath).async('string'));
+  const sRels = pxParse(await src.file(presRelsPath).async('string'));
+  const sTarget = new Map(pxEls(sRels, PX.rel, 'Relationship').map(r => [r.getAttribute('Id'), r.getAttribute('Target')]));
+  const added = [];
+  for (const s of pxEls(sPres, PX.p, 'sldId')) {
+    const t = sTarget.get(s.getAttributeNS(PX.r, 'id'));
+    if (t) { const dp = await copyPart(pxResolve(presPath, t)); if (dp) added.push(dp); }
+  }
+
+  // 발표 파일에 새 마스터·슬라이드 등록(마스터·레이아웃 번호는 겹치지 않게 새로 매김)
+  let maxRid = 0;
+  for (const r of pxEls(presRels, PX.rel, 'Relationship')) maxRid = Math.max(maxRid, parseInt(String(r.getAttribute('Id')).replace(/\D/g, ''), 10) || 0);
+  const newRel = (type, target) => {
+    const r = presRels.createElementNS(PX.rel, 'Relationship'), id = 'rId' + (++maxRid);
+    r.setAttribute('Id', id); r.setAttribute('Type', type); r.setAttribute('Target', target);
+    presRels.documentElement.appendChild(r);
+    return id;
+  };
+  let nextId = 2147483648;
+  for (const e of pxEls(pres, PX.p, 'sldMasterId')) nextId = Math.max(nextId, Number(e.getAttribute('id')) + 1);
+  for (const path of Object.keys(dst.files)) {
+    if (!/^ppt\/slideMasters\/[^/]+\.xml$/.test(path) || newMasters.includes(path)) continue;
+    const md = pxParse(await dst.file(path).async('string'));
+    for (const l of pxEls(md, PX.p, 'sldLayoutId')) nextId = Math.max(nextId, Number(l.getAttribute('id')) + 1);
+  }
+  const mLst = pxEls(pres, PX.p, 'sldMasterIdLst')[0];
+  for (const mp of newMasters) {
+    const md = pxParse(await dst.file(mp).async('string'));
+    for (const l of pxEls(md, PX.p, 'sldLayoutId')) l.setAttribute('id', String(nextId++));
+    dst.file(mp, pxSer(md));
+    const el = pres.createElementNS(PX.p, 'p:sldMasterId');
+    el.setAttribute('id', String(nextId++));
+    el.setAttributeNS(PX.r, 'r:id', newRel(PX_REL.master, pxRelTarget(presPath, mp)));
+    mLst.appendChild(el);
+  }
+  let sLst = pxEls(pres, PX.p, 'sldIdLst')[0];
+  if (!sLst) {
+    sLst = pres.createElementNS(PX.p, 'p:sldIdLst');
+    const after = pxEls(pres, PX.p, 'handoutMasterIdLst')[0] || pxEls(pres, PX.p, 'notesMasterIdLst')[0] || mLst;
+    after.parentNode.insertBefore(sLst, after.nextSibling);
+  }
+  let maxSld = 255;
+  for (const e of pxEls(pres, PX.p, 'sldId')) maxSld = Math.max(maxSld, Number(e.getAttribute('id')));
+  for (const sp of added) {
+    const el = pres.createElementNS(PX.p, 'p:sldId');
+    el.setAttribute('id', String(++maxSld));
+    el.setAttributeNS(PX.r, 'r:id', newRel(PX_REL.slide, pxRelTarget(presPath, sp)));
+    sLst.appendChild(el);
+  }
+  dst.file(presPath, pxSer(pres));
+  dst.file(presRelsPath, pxSer(presRels));
+  dst.file('[Content_Types].xml', pxSer(ctDoc));
+  const size = d => { const z = pxEls(d, PX.p, 'sldSz')[0]; return z ? z.getAttribute('cx') + 'x' + z.getAttribute('cy') : ''; };
+  return {slides: added.length, sizeMismatch: size(pres) !== size(sPres)};
+}
+
+
+const PPT_LIBS = ['https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js', 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'];
+const PPT_THEME = {
+  navy: {bg: '1A2040', fg: 'FFFFFF', sub: 'B8C2F0', shadow: false},
+  black: {bg: '000000', fg: 'FFFFFF', sub: '9CA2BC', shadow: false},
+  white: {bg: 'FFFFFF', fg: '14182B', sub: '5B6176', shadow: false},
+  image: {bg: '1A2040', fg: 'FFFFFF', sub: 'FFFFFF', shadow: true}
+};
+const PPT_FONT = 'Malgun Gothic';
+const PPTX_ACCEPT = '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+let PPTV = {edit: null, draft: '', busy: false, msg: '', has: new Map(), result: null};
+const blobToDataUrl = b => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(r.error); r.readAsDataURL(b); });
+async function loadPptLibs() {
+  if (!window.PptxGenJS) await loadScript(PPT_LIBS[0]);
+  if (!window.JSZip) await loadScript(PPT_LIBS[1]);
+}
+// 가사를 장으로 나누기: 2줄·4줄씩, 또는 빈 줄로
+function lyricChunks(text, lines) {
+  const t = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!t) return [];
+  if (!lines) return t.split(/\n\s*\n/).map(p => p.split('\n').map(x => x.trim()).filter(Boolean).join('\n')).filter(Boolean);
+  const ls = t.split('\n').map(x => x.trim()).filter(Boolean), out = [];
+  for (let i = 0; i < ls.length; i += lines) out.push(ls.slice(i, i + lines).join('\n'));
+  return out;
+}
+async function scoreData(x) {
+  const files = slotFiles(x), path = files[(EX && EX.pick && EX.pick[x.id]) || 0] || files[0];
+  if (!path) return null;
+  const src = await ensureSrc(path);
+  if (!src) return null;
+  try {
+    const blob = await (await fetch(src)).blob(), bmp = await createImageBitmap(blob);
+    return {data: (await blobToDataUrl(blob)).replace(/^data:/, ''), w: bmp.width, h: bmp.height};
+  } catch (e) { return null; }
+}
+async function genDeck(specs, o, bgData) {
+  const p = new window.PptxGenJS();
+  p.layout = o.ratio === '16:9' ? 'LAYOUT_16x9' : 'LAYOUT_4x3';
+  const W = 10, H = o.ratio === '16:9' ? 5.625 : 7.5, th = PPT_THEME[o.bg] || PPT_THEME.navy;
+  const shadow = th.shadow ? {type: 'outer', color: '000000', blur: 4, offset: 2, angle: 45, opacity: 0.6} : undefined;
+  const big = o.size === 'big';
+  for (const sp of specs) {
+    const sl = p.addSlide();
+    sl.background = sp.kind === 'score' ? {color: 'FFFFFF'} : (o.bg === 'image' && bgData ? {data: bgData.replace(/^data:/, '')} : {color: th.bg});
+    if (sp.kind === 'cover') sl.addText(sp.text, {x: 0.6, y: 0.6, w: W - 1.2, h: H - 1.2, align: 'center', valign: 'middle', fontFace: PPT_FONT, fontSize: big ? 40 : 34, bold: true, color: th.fg, shadow, fit: 'shrink', lineSpacingMultiple: 1.3});
+    else if (sp.kind === 'title') {
+      sl.addText(sp.title, {x: 0.6, y: H / 2 - 0.9, w: W - 1.2, h: 1.2, align: 'center', valign: 'middle', fontFace: PPT_FONT, fontSize: big ? 48 : 42, bold: true, color: th.fg, shadow, fit: 'shrink'});
+      if (sp.key) sl.addText(sp.key, {x: 0.6, y: H / 2 + 0.35, w: W - 1.2, h: 0.6, align: 'center', fontFace: PPT_FONT, fontSize: 20, color: th.sub});
+    } else if (sp.kind === 'lyric') {
+      sl.addText(sp.title, {x: 0.3, y: 0.15, w: W - 0.6, h: 0.45, fontFace: PPT_FONT, fontSize: 14, color: th.sub, shadow});
+      sl.addText(sp.text, {x: 0.5, y: 0.7, w: W - 1, h: H - 1.4, align: 'center', valign: 'middle', fontFace: PPT_FONT, fontSize: big ? 44 : 36, bold: true, color: th.fg, shadow, fit: 'shrink', lineSpacingMultiple: 1.25});
+    } else if (sp.kind === 'score') {
+      const pad = 0.15, r = Math.min((W - pad * 2) / sp.w, (H - pad * 2) / sp.h), w = sp.w * r, hh = sp.h * r;
+      sl.addImage({data: sp.data, x: (W - w) / 2, y: (H - hh) / 2, w, h: hh});
+    }
+  }
+  return p.write({outputType: 'blob'});
+}
+async function buildPpt() {
+  await loadPptLibs();
+  const o = state.pptOpt, bgData = o.bg === 'image' ? await loadPptBg() : null;
+  const pieces = [];
+  let run = [];
+  const flush = async () => { if (run.length) { pieces.push(await genDeck(run, o, bgData)); run = []; } };
+  if (o.cover && o.coverText.trim()) run.push({kind: 'cover', text: o.coverText.trim()});
+  for (const x of state.slots.filter(Boolean)) {
+    const s = SONGS[x.id], title = x.t, key = x.to || x.from || '';
+    const ppt = s && o.mode === 'auto' ? await getSongPpt(s) : null;
+    if (ppt) { await flush(); pieces.push(ppt); continue; }
+    if (o.titleSlide) run.push({kind: 'title', title, key});
+    const chunks = s && o.mode !== 'score' ? lyricChunks(await loadLyrics(s), o.lines) : [];
+    if (chunks.length) { chunks.forEach(t => run.push({kind: 'lyric', title, text: t})); continue; }
+    const img = await scoreData(x);
+    if (img) run.push({kind: 'score', ...img});
+    else if (!o.titleSlide) run.push({kind: 'title', title, key});
+  }
+  await flush();
+  if (!pieces.length) throw new Error('만들 슬라이드가 없어요');
+  const dst = await window.JSZip.loadAsync(pieces[0]);
+  let mism = false;
+  for (const pc of pieces.slice(1)) { const r = await mergePptx(dst, pc, window.JSZip); if (r.sizeMismatch) mism = true; }
+  const count = ((await dst.file('ppt/presentation.xml').async('string')).match(/<p:sldId /g) || []).length;
+  const blob = await dst.generateAsync({type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+  return {blob, mism, count};
+}
+async function refreshPptHas() {
+  for (const x of state.slots.filter(Boolean)) {
+    const s = SONGS[x.id];
+    if (s) PPTV.has.set(s.n, {lyr: !!(await loadLyrics(s)).trim(), ppt: !!(await getSongPpt(s)), score: slotFiles(x).some(hasScore)});
+  }
+}
+async function openPpt() {
+  if (!state.slots.some(Boolean)) { toast('콘티에 곡을 먼저 넣어 주세요'); return; }
+  const d = $('#pptDlg');
+  if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  PPTV.msg = ''; PPTV.result = null; PPTV.edit = null;
+  renderPpt();
+  await refreshPptHas(); await loadPptBg();
+  renderPpt();
+}
+function matchSongByName(name) {
+  const base = name.normalize('NFC').replace(/\.pptx?$/i, '').trim();
+  const info = parseName(base);
+  for (const c of [norm(info.title), norm(base), norm(base.replace(/\(.*?\)/g, ''))]) { const s = BY_NORM.get(c); if (s) return s; }
+  const nb = norm(base.replace(/\(.*?\)/g, ''));
+  return nb.length >= 3 ? SONGS.find(s => s.n.startsWith(nb) || nb.startsWith(s.n)) || null : null;
+}
+async function importSongPpts(files) {
+  let ok = 0, old = 0;
+  const miss = [];
+  PPTV.msg = '곡별 PPT를 연결하는 중이에요…'; renderPpt();
+  for (const f of files) {
+    const name = (f.webkitRelativePath ? f.webkitRelativePath.split('/').pop() : f.name).normalize('NFC');
+    if (name.startsWith('~$') || name.startsWith('.')) continue;
+    if (/\.ppt$/i.test(name)) { old++; continue; }
+    if (!/\.pptx$/i.test(name)) continue;
+    const s = matchSongByName(name);
+    if (s) { try { await setSongPpt(s, f); ok++; } catch (e) { miss.push(name); } } else miss.push(name);
+  }
+  await refreshPptHas();
+  PPTV.msg = `곡별 PPT ${ok}개를 곡에 연결했어요${PPT_PERSIST ? '' : '(이번에만)'}.`
+    + (miss.length ? ` 곡 목록에서 못 찾은 ${miss.length}개: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}` : '')
+    + (old ? ` 옛 형식(.ppt) ${old}개는 PowerPoint에서 .pptx로 저장한 뒤 넣어 주세요.` : '');
+  renderPpt();
+}
+async function makePpt() {
+  if (PPTV.busy) return;
+  PPTV.busy = true; PPTV.result = null; PPTV.msg = 'PPT를 만드는 중이에요… 곡별 PPT가 크면 조금 걸려요.'; renderPpt();
+  try {
+    const r = await buildPpt();
+    const d = parseYmd(state.date);
+    PPTV.result = {...r, name: `${pad(d.getMonth() + 1)}월 ${pad(d.getDate())}일 ${state.label} 파포.pptx`};
+    PPTV.msg = `${r.count}장짜리 PPT를 만들었어요. 아래 버튼으로 저장하세요.` + (r.mism ? ' 곡별 PPT 중 화면 비율이 다른 것이 있어요. 비율을 그 PPT에 맞추면 더 깔끔해요.' : '');
+  } catch (e) {
+    PPTV.msg = 'PPT를 만들지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.' + (e && e.message ? ` (${e.message})` : '');
+  }
+  PPTV.busy = false; renderPpt();
+}
+async function savePpt() {
+  const r = PPTV.result; if (!r) return;
+  const dl = await getDownloads();
+  if (!dl) { PPTV.msg = dlMsg(null); renderPpt(); return; }
+  try { await dl.save({filename: r.name, data: r.blob}); PPTV.msg = `"${r.name}"을 저장했어요.`; }
+  catch (e) { PPTV.msg = dlMsg(e); }
+  renderPpt();
+}
+function renderPpt() {
+  if (!$('#pptDlg').open) return;
+  const o = state.pptOpt, songs = state.slots.filter(Boolean);
+  const seg = (label, key, opts) => h('div', {class: 'ppt-opt'}, h('span', {class: 'cl', text: label}),
+    h('div', {class: 'seg', role: 'group', 'aria-label': label}, opts.map(([v, l]) => h('button', {type: 'button', 'aria-pressed': String(o[key] === v), onclick: () => {
+      if (key === 'bg' && v === 'image' && !PPT_BG) { $('#bgIn').click(); return; }
+      o[key] = v; save(); renderPpt();
+    }}, l))));
+  const use = hh => {
+    if (!hh) return '확인 중…';
+    if (o.mode === 'auto' && hh.ppt) return '곡별 PPT';
+    if (o.mode !== 'score' && hh.lyr) return '가사 슬라이드';
+    if (hh.score) return '악보 그림';
+    return '제목 장만 (가사·악보 없음)';
+  };
+  const rows = songs.map((x, i) => {
+    const s = SONGS[x.id], hh = s && PPTV.has.get(s.n), editing = s && PPTV.edit === s.n;
+    return h('li', {class: 'ppt-song'},
+      h('div', {class: 'ppt-song-head'},
+        h('b', {text: `${CIRC[i]} ${x.t}`}), h('span', {class: 'k', text: x.to || x.from || ''}),
+        h('span', {class: 'ppt-use', text: '→ ' + use(hh)}),
+        hh ? h('span', {class: 'hint', text: [hh.ppt ? 'PPT ✓' : '', hh.lyr ? '가사 ✓' : '', hh.score ? '악보 ✓' : ''].filter(Boolean).join(' · ') || '자료 없음'}) : null),
+      s ? h('div', {class: 'row-btns'},
+        h('button', {class: 'btn sm', type: 'button', onclick: async () => { if (editing) { PPTV.edit = null; } else { PPTV.edit = s.n; PPTV.draft = await loadLyrics(s); } renderPpt(); }},
+          editing ? '닫기' : (hh && hh.lyr ? '가사 고치기' : '가사 넣기')),
+        h('label', {class: 'btn sm'}, hh && hh.ppt ? '곡 PPT 바꾸기' : '곡 PPT 고르기',
+          h('input', {type: 'file', accept: PPTX_ACCEPT, hidden: true, onchange: async e => {
+            const f = e.target.files && e.target.files[0]; e.target.value = '';
+            if (!f) return;
+            if (!/\.pptx$/i.test(f.name)) { toast('.pptx 파일만 쓸 수 있어요'); return; }
+            await setSongPpt(s, f); await refreshPptHas(); renderPpt();
+            toast(PPT_PERSIST ? '이 곡에 PPT를 저장했어요' : '이 곡에 PPT를 연결했어요(이번에만)');
+          }})),
+        hh && hh.ppt ? h('button', {class: 'btn sm', type: 'button', onclick: async () => { await clearSongPpt(s); await refreshPptHas(); renderPpt(); }}, 'PPT 빼기') : null) : null,
+      editing ? h('div', {class: 'lyr-edit'},
+        h('textarea', {class: 'field', 'aria-label': x.t + ' 가사', placeholder: '가사를 붙여 넣으세요. "빈 줄로 나누기"를 고르면 빈 줄마다 한 장이 돼요.', oninput: e => { PPTV.draft = e.target.value; }}, PPTV.draft || ''),
+        h('div', {class: 'row-btns'},
+          h('button', {class: 'btn sm primary', type: 'button', onclick: async () => {
+            const ok = await saveLyrics(s, String(PPTV.draft || '').trim());
+            PPTV.edit = null; await refreshPptHas(); renderPpt();
+            toast(ok ? '가사를 저장했어요' : '가사를 이번에만 쓸게요');
+          }}, '가사 저장'),
+          h('span', {class: 'hint', text: `지금 설정이면 ${lyricChunks(PPTV.draft, o.lines).length}장이 돼요`}))) : null);
+  });
+  const r = PPTV.result;
+  fill($('#pptBody'),
+    h('div', {class: 'ppt-opts'},
+      seg('만드는 방식', 'mode', [['auto', '자동'], ['lyrics', '가사 슬라이드'], ['score', '악보 그림']]),
+      h('p', {class: 'hint', text: o.mode === 'auto' ? '곡마다 곡별 PPT가 있으면 그대로, 없으면 가사 슬라이드, 가사도 없으면 악보 그림을 넣어요.'
+        : o.mode === 'lyrics' ? '가사로 슬라이드를 만들어요. 가사가 없는 곡은 악보 그림을 넣어요.' : '곡마다 악보 그림을 한 장씩 넣어요.'}),
+      seg('화면 비율', 'ratio', [['4:3', '4:3'], ['16:9', '16:9']]),
+      h('div', {class: 'ppt-opt'}, h('span', {class: 'cl', text: '배경'}),
+        h('div', {class: 'seg', role: 'group', 'aria-label': '배경'}, [['navy', '남색'], ['black', '검정'], ['white', '흰색'], ['image', '내 그림']].map(([v, l]) =>
+          h('button', {type: 'button', 'aria-pressed': String(o.bg === v), onclick: () => { if (v === 'image' && !PPT_BG) { $('#bgIn').click(); return; } o.bg = v; save(); renderPpt(); }}, l))),
+        PPT_BG ? h('img', {class: 'bg-thumb', src: PPT_BG, alt: '배경 그림'}) : null,
+        h('button', {class: 'btn sm', type: 'button', onclick: () => $('#bgIn').click()}, PPT_BG ? '배경 그림 바꾸기' : '배경 그림 고르기')),
+      seg('가사 한 장에', 'lines', [[2, '2줄'], [4, '4줄'], [0, '빈 줄로 나누기']]),
+      seg('글자', 'size', [['mid', '보통'], ['big', '크게']]),
+      h('div', {class: 'ppt-opt'}, h('label', {class: 'tapadd'}, h('input', {type: 'checkbox', checked: !!o.cover, onchange: e => { o.cover = e.target.checked; save(); renderPpt(); }}), '첫 장 안내 넣기'),
+        o.cover ? h('textarea', {class: 'field', rows: 2, 'aria-label': '첫 장 문구', oninput: e => { o.coverText = e.target.value; save(); }}, o.coverText) : null),
+      h('div', {class: 'ppt-opt'}, h('label', {class: 'tapadd'}, h('input', {type: 'checkbox', checked: !!o.titleSlide, onchange: e => { o.titleSlide = e.target.checked; save(); renderPpt(); }}), '곡마다 제목 장 넣기'))),
+    h('div', {class: 'group-h', style: 'margin-top:4px'}, h('span', {text: '곡별 자료'}), h('span', {text: `${songs.length}곡`})),
+    h('ul', {class: 'ppt-songs'}, rows),
+    h('div', {class: 'row-btns'},
+      canFolderPick() ? h('button', {class: 'btn sm', type: 'button', onclick: () => $('#pptFolderIn').click()}, '곡별 PPT 폴더 불러오기') : null,
+      h('button', {class: 'btn sm', type: 'button', onclick: () => $('#pptFilesIn').click()}, '곡별 PPT 파일 고르기')),
+    h('p', {class: 'hint', text: '곡별 PPT는 파일 이름으로 곡을 찾아 연결해요(예: "시선.pptx"). 옛 형식(.ppt)은 PowerPoint에서 .pptx로 저장한 뒤 넣어 주세요.' + PPT_NOTE}),
+    PPTV.msg ? h('p', {class: 'hint', role: 'status', text: PPTV.msg}) : null,
+    h('div', {class: 'row-btns'},
+      h('button', {class: 'btn primary', type: 'button', disabled: PPTV.busy, onclick: makePpt}, PPTV.busy ? '만드는 중…' : 'PPT 만들기'),
+      r ? h('button', {class: 'btn primary', type: 'button', onclick: savePpt}, `저장하기 · ${r.count}장`) : null));
+}
+const canFolderPick = () => 'webkitdirectory' in document.createElement('input') && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 /* ---------- 콘티 파일: A4 가로에 2곡씩, 첫 장 왼쪽 위에 날짜·예배 ---------- */
 const PAGE = {w: 2000, h: 1414, m: 56, gap: 48, top: 70};
 const CANVAS_FONT = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 let EX = null, DL;
-const MIME = {png: 'image/png', pdf: 'application/pdf', jpg: 'image/jpeg', json: 'application/json'};
+const MIME = {png: 'image/png', pdf: 'application/pdf', jpg: 'image/jpeg', json: 'application/json', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
 // 폰: 공유 창(카카오톡·파일에 저장) / 크롬·엣지: 저장 위치 고르기 / 그 밖: 다운로드 폴더
 async function saveFiles(list) {
@@ -2379,6 +2808,16 @@ for (const d of [$('#pv'), $('#sm')]) {
   d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
   d.addEventListener('close', () => { if (d.id === 'pv' && PV) { Object.keys(PV.rotUrl).forEach(clearRot); PV = null; revokePv(); } });
 }
+$('#pptBtn').addEventListener('click', openPpt);
+$('#pptDlg').addEventListener('click', e => { const d = $('#pptDlg'); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+$('#pptFilesIn').addEventListener('change', e => { const files = [...(e.target.files || [])]; e.target.value = ''; importSongPpts(files); });
+$('#pptFolderIn').addEventListener('change', e => { const files = [...(e.target.files || [])]; e.target.value = ''; importSongPpts(files); });
+$('#bgIn').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try { await savePptBg(f); state.pptOpt.bg = 'image'; save(); toast('배경 그림을 넣었어요'); } catch (err) { toast('이 그림은 쓸 수 없어요'); }
+  renderPpt();
+});
 $('#exportBtn').addEventListener('click', () => { if (EX) EX.pick = EX.pick || {}; openExport(); });
 $('#ex').addEventListener('click', e => { const d = $('#ex'); if (e.target === d || e.target.closest('[data-close]')) d.close(); });
 $('#ex').addEventListener('close', () => { revokeEx(); if (EX) { EX.pages = []; EX.blobs = []; } });
@@ -2456,7 +2895,7 @@ function renderSettings() {
       h('button', {class: 'btn sm', type: 'button', onclick: () => { const id = 's' + Date.now().toString(36); SVC[id] = {name: '새 예배', count: 4, dow: 0, label: '새 예배', skipEdge: false}; saveSvc(); renderTop(); renderSettings(); }}, '+ 예배 추가'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { SVC = JSON.parse(JSON.stringify(DEFAULT_SVC)); saveSvc(); if (!SVC[state.svc]) setService(firstSvc()); else commit(); renderSettings(); }}, '기본으로')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '백업'}), h('span', {text: '곡 목록 · 기록 · 설정'})),
-    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 악보 그림은 백업에 들어가지 않으니, 새 기기에서는 악보를 다시 불러오세요.'}),
+    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
@@ -2473,7 +2912,8 @@ function renderSettings() {
     h('p', {class: 'hint', text: '찬양 인도자를 위한 무료 콘티 도구예요. 악보와 자료는 서버로 보내지 않아요. 악보의 저작권은 각 저작권자에게 있으니 교회 안에서 바르게 사용해 주세요.'}));
 }
 async function makeBackup() {
-  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq};
+  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {};
+  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, pptOpt: state.pptOpt};
   try { await saveFiles([{filename: `콘티노트 백업 ${ymd(new Date())}.json`, data: JSON.stringify(data)}]); toast('백업 파일을 만들었어요'); }
   catch (e) { if (!e || e.code !== 'declined') toast('백업 파일을 저장하지 못했어요'); }
 }
@@ -2489,6 +2929,7 @@ async function restoreBackup(file) {
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     if (data.services && typeof data.services === 'object' && Object.keys(data.services).length) { SVC = data.services; saveSvc(); if (!SVC[state.svc]) state.svc = firstSvc(); }
     if (data.seasonOv && typeof data.seasonOv === 'object') state.seasonOv = {...state.seasonOv, ...data.seasonOv};
+    if (data.lyrics && typeof data.lyrics === 'object') { const a = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.lyrics)) if (typeof v === 'string' && !a[k]) a[k] = v; await dbPut('docs', 'lyrics', a); LYR_ALL = a; }
     rebuildUsage(); relinkState(); commit(); renderHistBtn(); renderSettings(); renderScoreStatus();
     toast('백업을 불러왔어요. 악보 그림은 다시 불러와 주세요');
   } catch (e) { toast('백업 파일을 읽지 못했어요'); }
@@ -2569,7 +3010,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
 }
-if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state};
+if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt};
 // 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시
 document.querySelectorAll('#tray [data-go]').forEach(b => b.addEventListener('click', () => {
   const el = document.getElementById(b.dataset.go);

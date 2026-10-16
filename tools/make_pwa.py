@@ -226,7 +226,7 @@ const histSort = (a, b) => String(b.date).localeCompare(String(a.date)) || Strin
   try {
     EXTRA = (await dbGet('docs', 'songs')) || {};
     rebuildSongs();
-    (await dbKeys('files')).forEach(k => INDEX.set(k, true));
+    (await dbKeys('files')).forEach(k => { if (!String(k).includes(':')) INDEX.set(k, true); });
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     rebuildUsage();
   } catch (e) { toast('이 브라우저에서는 저장 공간을 쓸 수 없어요. 개인 정보 보호 모드인지 확인해 주세요'); }
@@ -515,6 +515,46 @@ rep_between("async function pickOne(e, path) {", "/* ---------- 마디 진행:",
 
 ''')
 
+PPT_STORE = r'''/* ---------- PPT 저장소: 가사·곡별 PPT·배경 그림을 이 기기(IndexedDB)에 저장 ---------- */
+const LYR = new Map(), SONG_PPT = new Map();
+const PPT_PERSIST = true;
+const PPT_NOTE = '';
+let LYR_ALL = null;
+async function lyrAll() { if (!LYR_ALL) LYR_ALL = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; return LYR_ALL; }
+async function loadLyrics(song) { return String((await lyrAll())[song.n] || ''); }
+async function saveLyrics(song, text) {
+  const a = await lyrAll();
+  if (text) a[song.n] = text; else delete a[song.n];
+  try { await dbPut('docs', 'lyrics', a); return true; } catch (e) { return false; }
+}
+async function getSongPpt(song) {
+  if (SONG_PPT.has(song.n)) return SONG_PPT.get(song.n);
+  const v = await dbGet('files', 'ppt:' + fnv(song.n)).catch(() => null);
+  const b = v && v.blob ? v.blob : null;
+  SONG_PPT.set(song.n, b);
+  return b;
+}
+async function setSongPpt(song, file) {
+  SONG_PPT.set(song.n, file);
+  await dbPut('files', 'ppt:' + fnv(song.n), {blob: file, type: file.type || MIME.pptx, path: 'ppt:' + song.n});
+}
+async function clearSongPpt(song) { SONG_PPT.set(song.n, null); await dbDel('files', 'ppt:' + fnv(song.n)).catch(() => {}); }
+let PPT_BG;
+async function loadPptBg() {
+  if (PPT_BG !== undefined) return PPT_BG;
+  const v = await dbGet('files', 'bg:ppt').catch(() => null);
+  PPT_BG = v && v.blob ? await blobToDataUrl(v.blob) : null;
+  return PPT_BG;
+}
+async function savePptBg(file) {
+  const {blob} = await prepare(file, file.name);
+  await dbPut('files', 'bg:ppt', {blob, type: blob.type, path: 'bg:ppt'});
+  PPT_BG = await blobToDataUrl(blob);
+}
+
+'''
+rep_between("/* ---------- PPT 저장소 (claude.ai판)", "/* ---------- 예배 PPT 만들기", PPT_STORE)
+
 # ---------------------------------------------------------------- 기록: 이 기기에 저장
 rep("  if (!DB) { if (!silent) toast('기록 저장은 claude.ai에서 이 앱을 열었을 때만 돼요'); return false; }\n", '')
 rep("    await DB.doc('contis/' + histId()).set(doc);", "    await dbPut('contis', histId(), doc);\n    HIST = HIST.filter(x => x.id !== histId()).concat([{id: histId(), ...doc}]).sort(histSort);\n    rebuildUsage(); onHist();")
@@ -529,7 +569,7 @@ rep("""const getDownloads = async () => {
   if (DL !== undefined) return DL;
   try { DL = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { DL = null; }
   return DL;
-};""", r'''const MIME = {png: 'image/png', pdf: 'application/pdf', jpg: 'image/jpeg', json: 'application/json'};
+};""", r'''const MIME = {png: 'image/png', pdf: 'application/pdf', jpg: 'image/jpeg', json: 'application/json', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
 // 폰: 공유 창(카카오톡·파일에 저장) / 크롬·엣지: 저장 위치 고르기 / 그 밖: 다운로드 폴더
 async function saveFiles(list) {
@@ -604,7 +644,7 @@ function renderSettings() {
       h('button', {class: 'btn sm', type: 'button', onclick: () => { const id = 's' + Date.now().toString(36); SVC[id] = {name: '새 예배', count: 4, dow: 0, label: '새 예배', skipEdge: false}; saveSvc(); renderTop(); renderSettings(); }}, '+ 예배 추가'),
       h('button', {class: 'btn sm', type: 'button', onclick: () => { SVC = JSON.parse(JSON.stringify(DEFAULT_SVC)); saveSvc(); if (!SVC[state.svc]) setService(firstSvc()); else commit(); renderSettings(); }}, '기본으로')),
     h('div', {class: 'group-h', style: 'margin-top:14px'}, h('span', {text: '백업'}), h('span', {text: '곡 목록 · 기록 · 설정'})),
-    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 악보 그림은 백업에 들어가지 않으니, 새 기기에서는 악보를 다시 불러오세요.'}),
+    h('p', {class: 'hint', text: '콘티노트의 자료는 모두 이 기기 안에만 저장돼요. 기기를 바꾸거나 브라우저 기록을 지우기 전에 백업 파일을 만들어 두세요. 곡 목록·가사·기록·설정이 들어가요. 악보 그림과 곡별 PPT는 백업에 들어가지 않으니, 새 기기에서는 다시 불러오세요.'}),
     h('div', {class: 'row-btns'},
       h('button', {class: 'btn', type: 'button', onclick: makeBackup}, '백업 파일 만들기'),
       h('button', {class: 'btn', type: 'button', onclick: () => $('#restoreIn').click()}, '백업 불러오기')),
@@ -621,7 +661,8 @@ function renderSettings() {
     h('p', {class: 'hint', text: '찬양 인도자를 위한 무료 콘티 도구예요. 악보와 자료는 서버로 보내지 않아요. 악보의 저작권은 각 저작권자에게 있으니 교회 안에서 바르게 사용해 주세요.'}));
 }
 async function makeBackup() {
-  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq};
+  const lyrics = (await dbGet('docs', 'lyrics').catch(() => null)) || {};
+  const data = {app: 'continote', version: 1, savedAt: new Date().toISOString(), songs: EXTRA, contis: HIST, services: SVC, seasonOv: state.seasonOv, seq: state.seq, lyrics, pptOpt: state.pptOpt};
   try { await saveFiles([{filename: `콘티노트 백업 ${ymd(new Date())}.json`, data: JSON.stringify(data)}]); toast('백업 파일을 만들었어요'); }
   catch (e) { if (!e || e.code !== 'declined') toast('백업 파일을 저장하지 못했어요'); }
 }
@@ -637,6 +678,7 @@ async function restoreBackup(file) {
     HIST = (await dbAll('contis')).map(([id, v]) => ({id, ...v})).sort(histSort);
     if (data.services && typeof data.services === 'object' && Object.keys(data.services).length) { SVC = data.services; saveSvc(); if (!SVC[state.svc]) state.svc = firstSvc(); }
     if (data.seasonOv && typeof data.seasonOv === 'object') state.seasonOv = {...state.seasonOv, ...data.seasonOv};
+    if (data.lyrics && typeof data.lyrics === 'object') { const a = (await dbGet('docs', 'lyrics').catch(() => null)) || {}; for (const [k, v] of Object.entries(data.lyrics)) if (typeof v === 'string' && !a[k]) a[k] = v; await dbPut('docs', 'lyrics', a); LYR_ALL = a; }
     rebuildUsage(); relinkState(); commit(); renderHistBtn(); renderSettings(); renderScoreStatus();
     toast('백업을 불러왔어요. 악보 그림은 다시 불러와 주세요');
   } catch (e) { toast('백업 파일을 읽지 못했어요'); }
@@ -717,7 +759,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { renderScoreStatus(); if (PV) renderPreview(); });
 }
-if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state};
+if (location.hostname === 'localhost') window.__ct = {importFiles, SONGS, INDEX, state: () => state, openPpt, makePpt, PPTV, setSongPpt, saveLyrics, buildPpt};
 '''
 rep("// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시", SETTINGS.strip('\n') + "\n// 폰 아래 이동 메뉴: 누르면 그 칸으로, 지금 보고 있는 칸은 표시")
 

@@ -1,5 +1,5 @@
 // 콘티노트 서비스워커: 앱을 오프라인에서도 열고, 이 기기에 저장한 악보 그림을 score/<해시> 주소로 내준다
-const VERSION = 'continote-v4';
+const VERSION = 'continote-v5';
 const RUNTIME = 'continote-runtime';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 
@@ -48,7 +48,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   // 글꼴·PDF 라이브러리·아이콘: 한 번 받으면 저장해 두고 쓴다
-  if (url.origin === location.origin || /(^|\.)fonts\.(googleapis|gstatic)\.com$|^cdnjs\.cloudflare\.com$/.test(url.host)) {
+  if (url.origin === location.origin || /(^|\.)fonts\.(googleapis|gstatic)\.com$|^cdnjs\.cloudflare\.com$|^cdn\.jsdelivr\.net$/.test(url.host)) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => {
       if (r.ok || r.type === 'opaque') { const copy = r.clone(); caches.open(RUNTIME).then(c => c.put(req, copy)); }
       return r;
