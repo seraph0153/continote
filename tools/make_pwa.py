@@ -747,6 +747,7 @@ const DEV = {
   standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
 };
 DEV.iosSafari = DEV.ios && /Safari/.test(UA) && !/CriOS|FxiOS|EdgiOS/.test(UA) && !DEV.inApp;
+DEV.ipad = DEV.ios && !/iPhone|iPod/.test(UA);
 const SHARE_SVG = '<svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
 let installEvt = null;
 function installHelp() {
@@ -757,7 +758,8 @@ function installHelp() {
     link: {href: 'intent://' + APP_URL.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end', label: '크롬으로 열기'}};
   if (DEV.inApp) return {title: '이 앱 안에서는 설치가 안 돼요', text: '화면 구석의 ··· 메뉴에서 "Safari로 열기"(또는 "다른 브라우저로 열기")를 누른 뒤 설치하세요.'};
   if (installEvt) return {title: '콘티노트를 앱으로 설치하세요', text: '홈 화면에 아이콘이 생기고, 인터넷이 없어도 열려요.', button: '홈 화면에 설치'};
-  if (DEV.iosSafari) return {title: '홈 화면에 설치하기', steps: [`아래쪽 공유 버튼 ${SHARE_SVG} 누르기`, '목록을 올려 "홈 화면에 추가" 누르기', '오른쪽 위 "추가" 누르기']};
+  if (DEV.iosSafari && DEV.ipad) return {title: '아이패드 홈 화면에 설치하기', steps: [`주소창 오른쪽의 공유 버튼 ${SHARE_SVG} 누르기 (안 보이면 ··· 버튼 안에 있어요)`, '"홈 화면에 추가" 누르기', '"웹 앱으로 열기"가 켜진 채로 "추가" 누르기']};
+  if (DEV.iosSafari) return {title: '홈 화면에 설치하기', steps: [`아래쪽 공유 버튼 ${SHARE_SVG} 누르기 (안 보이면 ··· 버튼 안에 있어요)`, '목록을 올려 "홈 화면에 추가" 누르기', '"웹 앱으로 열기"가 켜진 채로 "추가" 누르기']};
   if (DEV.ios) return {title: '홈 화면에 설치하기', steps: [`주소창 옆 공유 버튼 ${SHARE_SVG} 누르기`, '"홈 화면에 추가" 누르기 (안 보이면 Safari에서 여세요)']};
   if (DEV.android) return {title: '홈 화면에 설치하기', steps: ['오른쪽 위 ⋮ 메뉴 누르기', '"홈 화면에 추가" 또는 "앱 설치" 누르기']};
   return null;
